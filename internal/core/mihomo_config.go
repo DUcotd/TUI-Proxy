@@ -21,7 +21,13 @@ type ProxyProvider struct {
 	URL         string      `yaml:"url"`
 	Path        string      `yaml:"path"`
 	Interval    int         `yaml:"interval"`
+	Override    *Override   `yaml:"override,omitempty"`
 	HealthCheck *HealthCheck `yaml:"health-check"`
+}
+
+// Override defines provider-level overrides.
+type Override struct {
+	SkipCertVerify bool `yaml:"skip-cert-verify,omitempty"`
 }
 
 // HealthCheck defines the health check configuration for a provider.
