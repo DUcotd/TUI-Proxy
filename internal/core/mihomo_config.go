@@ -39,11 +39,13 @@ type HealthCheck struct {
 
 // ProxyGroup defines a proxy group.
 type ProxyGroup struct {
-	Name string   `yaml:"name"`
-	Type string   `yaml:"type"`
-	Use  []string `yaml:"use,omitempty"`
-	URL  string   `yaml:"url,omitempty"`
-	Interval int  `yaml:"interval,omitempty"`
+	Name     string   `yaml:"name" json:"name"`
+	Type     string   `yaml:"type" json:"type"`
+	Now      string   `yaml:"now,omitempty" json:"now,omitempty"`
+	All      []string `yaml:"all,omitempty" json:"all,omitempty"`
+	Use      []string `yaml:"use,omitempty" json:"use,omitempty"`
+	URL      string   `yaml:"url,omitempty" json:"url,omitempty"`
+	Interval int      `yaml:"interval,omitempty" json:"interval,omitempty"`
 }
 
 // DNSConfig defines the DNS configuration.

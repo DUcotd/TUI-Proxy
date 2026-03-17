@@ -33,10 +33,10 @@ func init() {
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
-	path := core.DefaultConfigDir + "/config.yaml"
-	data, err := os.ReadFile(path)
+	configPath := core.DefaultConfigDir + "/config.yaml"
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return fmt.Errorf("无法读取配置文件 %s: %w", path, err)
+		return fmt.Errorf("无法读取配置文件 %s: %w", configPath, err)
 	}
 	fmt.Println(string(data))
 	return nil

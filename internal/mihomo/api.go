@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // Client communicates with the Mihomo controller REST API.
@@ -19,7 +20,7 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
-		HTTP:    &http.Client{Timeout: 5 * 1e9}, // 5 seconds
+		HTTP:    &http.Client{Timeout: 5 * time.Second},
 	}
 }
 

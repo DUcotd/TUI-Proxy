@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"gopkg.in/yaml.v3"
+
 	"clashctl/internal/core"
 )
 
@@ -56,7 +58,39 @@ func LoadOrCreateAppConfig() (*core.AppConfig, error) {
 		return core.DefaultAppConfig(), nil
 	}
 
-	// TODO: implement actual loading with viper
-	// For now just return defaults
-	return core.DefaultAppConfig(), nil
+	// Load from YAML file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	cfg := core.DefaultAppConfig()
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// SaveAppConfig saves the AppConfig to disk as YAML.
+func SaveAppConfig(cfg *core.AppConfig) error {
+	if err := EnsureMyAppDir(); err != nil {
+		return err
+	}
+
+	path, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w", err)
+	}
+
+	return nil
 }

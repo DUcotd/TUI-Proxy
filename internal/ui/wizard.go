@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -283,6 +284,11 @@ func (m *WizardModel) collectAdvancedValues() {
 			m.appCfg.ConfigDir = val
 		case "控制器地址":
 			m.appCfg.ControllerAddr = val
+		case "mixed-port":
+			var port int
+			if _, err := fmt.Sscanf(val, "%d", &port); err == nil && port > 0 {
+				m.appCfg.MixedPort = port
+			}
 		case "Provider 路径":
 			m.appCfg.ProviderPath = val
 		case "健康检查":

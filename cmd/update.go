@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -133,7 +134,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 func fetchLatestRelease() (*GitHubRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubOwner, githubRepo)
 
-	client := &http.Client{Timeout: 10 * 1e9}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
