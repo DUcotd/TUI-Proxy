@@ -1,6 +1,7 @@
 # Binary
 myproxy
 myproxy-*
+clashctl-*
 *.exe
 
 # Go
