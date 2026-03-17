@@ -54,7 +54,7 @@ func (m WizardModel) executeFull() []ExecStep {
 		m.stepStartProcess(&steps)
 	}
 
-	// Step 8: Verify controller API
+	// Step 8: Verify controller API (non-blocking check)
 	m.stepCheckController(&steps)
 
 	return steps
@@ -240,7 +240,7 @@ func (m WizardModel) stepStartProcess(steps *[]ExecStep) {
 	})
 }
 
-func (m WizardModel) stepCheckController(steps *[]ExecStep) {
+func (m *WizardModel) stepCheckController(steps *[]ExecStep) {
 	client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
 	if err := client.CheckConnection(); err != nil {
 		*steps = append(*steps, ExecStep{
@@ -248,6 +248,7 @@ func (m WizardModel) stepCheckController(steps *[]ExecStep) {
 			Success: false,
 			Detail:  err.Error() + "\nMihomo 可能还在启动中，请稍后用 'clashctl status' 检查",
 		})
+		m.controllerAvailable = false
 		return
 	}
 
@@ -261,6 +262,7 @@ func (m WizardModel) stepCheckController(steps *[]ExecStep) {
 		detail += fmt.Sprintf("\n代理组 PROXY: %d 个节点可用", len(group.All))
 	}
 
+	m.controllerAvailable = true
 	*steps = append(*steps, ExecStep{
 		Label:   "检查 Controller API",
 		Success: true,

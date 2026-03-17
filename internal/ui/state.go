@@ -11,6 +11,7 @@ const (
 	ScreenAdvanced
 	ScreenPreview
 	ScreenResult
+	ScreenNodes // 节点选择与延迟测试
 	ScreenDone
 )
 
@@ -29,6 +30,8 @@ func (s Screen) StepLabel() string {
 		return "步骤 4/5: 配置预览"
 	case ScreenResult:
 		return "步骤 5/5: 执行结果"
+	case ScreenNodes:
+		return "节点选择与延迟测试"
 	default:
 		return ""
 	}

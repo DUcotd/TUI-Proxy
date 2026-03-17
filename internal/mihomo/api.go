@@ -104,3 +104,32 @@ func (c *Client) CheckConnection() error {
 	_, err := c.Version()
 	return err
 }
+
+// TestNode tests a node's latency via the controller API (GET /proxies/{group}/{name}).
+// Returns the delay in ms (0 = no data, negative = timeout/error).
+func (c *Client) TestNode(groupName, nodeName string) int {
+	type proxyInfo struct {
+		History []History `json:"history"`
+	}
+
+	url := fmt.Sprintf("%s/proxies/%s/%s", c.BaseURL, groupName, nodeName)
+	resp, err := c.HTTP.Get(url)
+	if err != nil {
+		return -1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return -1
+	}
+
+	var info proxyInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return -1
+	}
+
+	if len(info.History) == 0 {
+		return 0
+	}
+	return info.History[len(info.History)-1].Delay
+}
