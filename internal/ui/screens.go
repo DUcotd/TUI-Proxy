@@ -17,7 +17,7 @@ func (m WizardModel) viewWelcome() string {
   • 调整高级设置（可选）
   • 自动生成并写入 Mihomo 配置
   • 启动 Mihomo 服务
-  • 选择节点 & 延迟测试
+  • 选择代理组和节点
 
   你只需要一个订阅链接，剩下的我们来搞定。
 
@@ -110,128 +110,113 @@ func (m WizardModel) viewResult() string {
 	content += "\n"
 	if allSuccess {
 		content += SuccessStyle.Render("🎉 配置完成！Mihomo 已配置就绪。") + "\n"
-
-		if m.controllerAvailable {
-			content += InfoStyle.Render("服务已启动，可以继续选择节点") + "\n"
-		} else {
-			content += InfoStyle.Render("使用 'clashctl start' 启动服务") + "\n"
-			content += InfoStyle.Render("使用 'clashctl doctor' 检查环境") + "\n"
-		}
 	} else {
-		content += ErrorStyle.Render("⚠️ 部分步骤失败，请检查上述错误信息。") + "\n"
+		content += WarningStyle.Render("⚠️ 部分步骤失败，请检查上述错误信息。") + "\n"
 	}
 
-	content += "\n"
 	if m.controllerAvailable {
-		content += HelpStyle.Render("Enter 选择节点 │ q 退出")
+		content += "\n" + InfoStyle.Render("Controller API 可用，可以管理节点。") + "\n"
+		content += HelpStyle.Render("按 Enter/n 进入节点管理 │ 按 Esc 退出")
 	} else {
+		content += "\n" + InfoStyle.Render("使用 'clashctl start' 启动服务") + "\n"
+		content += InfoStyle.Render("使用 'clashctl doctor' 检查环境") + "\n"
 		content += HelpStyle.Render("按 Enter 退出")
 	}
 
 	return BoxStyle.Render(content)
 }
 
-func (m WizardModel) viewNodes() string {
-	if m.nodesLoading {
-		content := HeaderStyle.Render("📡 正在获取节点列表...") + "\n\n"
-		content += InfoStyle.Render("连接 Controller API: " + m.appCfg.ControllerAddr) + "\n"
-		content += InfoStyle.Render("请稍候...")
+func (m WizardModel) viewGroupSelect() string {
+	if m.loading {
+		content := m.spinner.View() + " " + m.loadingMsg
 		return BoxStyle.Render(content)
 	}
 
-	if m.nodesError != "" {
-		content := HeaderStyle.Render("⚠️ 错误") + "\n\n"
-		content += ErrorStyle.Render(m.nodesError) + "\n\n"
-		content += HelpStyle.Render("r 重试 │ Esc 返回 │ q 退出")
+	if len(m.groups) == 0 {
+		content := WarningStyle.Render("未找到任何代理组") + "\n\n"
+		content += InfoStyle.Render("请确认 Mihomo 已启动并且有可用的代理组") + "\n"
+		content += HelpStyle.Render("按 Esc 退出")
 		return BoxStyle.Render(content)
 	}
 
-	if len(m.nodes) == 0 {
-		content := HeaderStyle.Render("节点列表为空") + "\n\n"
-		content += InfoStyle.Render("未发现任何代理节点，请检查订阅 URL") + "\n\n"
-		content += HelpStyle.Render("r 刷新 │ Esc 返回 │ q 退出")
-		return BoxStyle.Render(content)
-	}
+	content := HeaderStyle.Render("选择代理组") + "\n\n"
 
-	// Header
-	content := HeaderStyle.Render(fmt.Sprintf("📡 可用节点 (%d)", len(m.nodes))) + "\n"
+	for i, g := range m.groups {
+		typeIcon := groupIcon(g.Type)
+		line := fmt.Sprintf("%s %s", typeIcon, g.Name)
 
-	if m.testingAll {
-		content += WarningStyle.Render("⏳ 正在测试所有节点延迟...") + "\n\n"
-	} else if m.selectedNodeName != "" {
-		content += SuccessStyle.Render("✅ 已切换至: "+m.selectedNodeName) + "\n\n"
-	} else {
-		content += "\n"
-	}
-
-	// Column header
-	content += InfoStyle.Render(fmt.Sprintf("  %-4s %-40s %-12s %s", "", "节点名称", "延迟", "类型"))
-	content += "\n"
-	content += InfoStyle.Render("  " + strings.Repeat("─", 70))
-	content += "\n"
-
-	// Node list
-	maxVisible := 15
-	startIdx := 0
-	if m.nodeIndex >= maxVisible {
-		startIdx = m.nodeIndex - maxVisible + 1
-	}
-	endIdx := startIdx + maxVisible
-	if endIdx > len(m.nodes) {
-		endIdx = len(m.nodes)
-	}
-
-	for i := startIdx; i < endIdx; i++ {
-		node := m.nodes[i]
-		isHighlighted := (i == m.nodeIndex)
-
-		// Cursor
-		cursor := nodeCursor(isHighlighted)
-
-		// Node name (truncate if too long)
-		name := node.Name
-		if len(name) > 38 {
-			name = name[:35] + "..."
+		if g.Now != "" {
+			line += InfoStyle.Render(fmt.Sprintf(" → %s", g.Now))
 		}
+		line += InfoStyle.Render(fmt.Sprintf(" (%d)", g.NodeCount))
 
-		// Selected indicator
-		selMark := ""
-		if node.Selected {
-			selMark = " ●"
-		}
-
-		// Delay
-		delayStr := formatNodeDelay(node.Delay)
-		if node.Testing {
-			delayStr = "测试中..."
-		}
-
-		line := fmt.Sprintf("%s %-40s %-12s %s%s",
-			cursor, name, delayStr, node.Type, selMark)
-
-		if isHighlighted {
-			content += SelectedStyle.Render(line) + "\n"
-		} else if node.Selected {
-			content += SuccessStyle.Render(line) + "\n"
+		if i == m.groupIndex {
+			content += SelectedStyle.Render("▸ "+line) + "\n"
 		} else {
-			content += UnselectedStyle.Render(line) + "\n"
+			content += UnselectedStyle.Render("  "+line) + "\n"
 		}
 	}
 
-	// Scroll indicator
-	if len(m.nodes) > maxVisible {
-		content += InfoStyle.Render(fmt.Sprintf("\n  [%d/%d]", m.nodeIndex+1, len(m.nodes)))
-	}
-
-	// Help
-	content += "\n" + HelpStyle.Render("↑/↓ 移动 │ Enter 选择 │ t 测试延迟 │ r 刷新 │ q 退出")
+	content += "\n" + BadgeStyle.Render("🔀 select") + " 选择  "
+	content += BadgeStyle.Render("⚡ url-test") + " 测试  "
+	content += BadgeStyle.Render("🔄 fallback") + " 故障转移"
+	content += "\n"
+	content += HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ Esc 退出")
 
 	return BoxStyle.Render(content)
 }
 
-// Completed returns true if the wizard finished all steps.
-func (m WizardModel) Completed() bool {
-	return len(m.execSteps) > 0
+func (m WizardModel) viewNodeSelect() string {
+	if m.loading {
+		content := m.spinner.View() + " " + m.loadingMsg
+		return BoxStyle.Render(content)
+	}
+
+	content := HeaderStyle.Render(fmt.Sprintf("代理组: %s", m.selectedGroup)) + "\n\n"
+
+	if len(m.nodes) == 0 {
+		content += WarningStyle.Render("该组没有可用节点") + "\n"
+		content += HelpStyle.Render("按 Esc 返回")
+		return BoxStyle.Render(content)
+	}
+
+	for i, node := range m.nodes {
+		marker := "  "
+		if node.Selected {
+			marker = ActiveMarkerStyle.Render("✓ ")
+		}
+
+		line := marker + node.Name
+
+		if i == m.nodeIndex {
+			content += SelectedStyle.Render("▸ "+strings.TrimSpace(line)) + "\n"
+		} else {
+			content += UnselectedStyle.Render("  "+strings.TrimSpace(line)) + "\n"
+		}
+	}
+
+	if m.switchResult != "" {
+		content += "\n" + m.switchResult + "\n"
+	}
+
+	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换节点 │ Esc 返回组列表")
+
+	return BoxStyle.Render(content)
+}
+
+func groupIcon(t string) string {
+	switch t {
+	case "select":
+		return "🔀"
+	case "url-test":
+		return "⚡"
+	case "fallback":
+		return "🔄"
+	case "load-balance":
+		return "⚖️"
+	default:
+		return "📦"
+	}
 }
 
 func boolToYesNo(b bool) string {

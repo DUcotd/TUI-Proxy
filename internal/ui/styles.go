@@ -80,4 +80,32 @@ var (
 			BorderForeground(lipgloss.Color("#7C3AED")).
 			Padding(1, 2).
 			MarginTop(1)
+
+	// Node delay styles
+	DelayGoodStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#10B981"))
+
+	DelayOkStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#F59E0B"))
+
+	DelayBadStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#EF4444"))
+
+	DelayUnknownStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6B7280"))
+
+	// Current selection marker
+	ActiveMarkerStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#10B981"))
+
+	// Group type badge
+	BadgeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7C3AED")).
+			Background(lipgloss.Color("#1E1B4B")).
+			Padding(0, 1)
+
+	// Spinner style
+	SpinnerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF6B9D"))
 )

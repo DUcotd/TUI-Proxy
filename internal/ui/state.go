@@ -11,7 +11,8 @@ const (
 	ScreenAdvanced
 	ScreenPreview
 	ScreenResult
-	ScreenNodes // 节点选择与延迟测试
+	ScreenGroupSelect // 选择代理组
+	ScreenNodeSelect  // 选择节点
 	ScreenDone
 )
 
@@ -30,9 +31,26 @@ func (s Screen) StepLabel() string {
 		return "步骤 4/5: 配置预览"
 	case ScreenResult:
 		return "步骤 5/5: 执行结果"
-	case ScreenNodes:
-		return "节点选择与延迟测试"
+	case ScreenGroupSelect:
+		return "代理组管理"
+	case ScreenNodeSelect:
+		return "节点选择"
 	default:
 		return ""
 	}
+}
+
+// GroupItem represents a proxy group in the TUI list.
+type GroupItem struct {
+	Name     string
+	Type     string
+	Now      string
+	NodeCount int
+}
+
+// NodeItem represents a proxy node in the TUI list.
+type NodeItem struct {
+	Name     string
+	Delay    int
+	Selected bool
 }
