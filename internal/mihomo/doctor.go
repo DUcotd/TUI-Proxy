@@ -62,7 +62,7 @@ func checkBinary() CheckResult {
 			Name:    "mihomo 可执行文件",
 			Passed:  false,
 			Problem: err.Error(),
-			Suggest: "请安装 Mihomo：https://github.com/MetaCubeX/mihomo/releases",
+			Suggest: "运行 'clashctl init' 将自动下载安装，或手动安装: https://github.com/MetaCubeX/mihomo/releases",
 		}
 	}
 	version, _ := GetBinaryVersion()

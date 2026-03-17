@@ -78,12 +78,28 @@ func (m WizardModel) stepCheckURL() ExecStep {
 func (m WizardModel) stepCheckBinary(steps *[]ExecStep) (string, bool) {
 	binary, err := mihomo.FindBinary()
 	if err != nil {
+		// Not found, try auto-download
 		*steps = append(*steps, ExecStep{
 			Label:   "检测 Mihomo 可执行文件",
 			Success: false,
-			Detail:  err.Error() + "\n请先安装 Mihomo：https://github.com/MetaCubeX/mihomo/releases",
+			Detail:  "未找到，尝试自动下载...",
 		})
-		return "", false
+
+		binary, err = mihomo.InstallMihomo()
+		if err != nil {
+			*steps = append(*steps, ExecStep{
+				Label:   "自动下载 Mihomo",
+				Success: false,
+				Detail:  err.Error(),
+			})
+			return "", false
+		}
+		*steps = append(*steps, ExecStep{
+			Label:   "自动下载 Mihomo",
+			Success: true,
+			Detail:  "已安装到 " + binary,
+		})
+		return binary, true
 	}
 	version, _ := mihomo.GetBinaryVersion()
 	detail := "已找到: " + binary

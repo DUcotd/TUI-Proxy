@@ -82,14 +82,20 @@ func (p *Process) IsRunning() bool {
 	return err == nil
 }
 
-// FindBinary locates the mihomo binary in PATH.
+// FindBinary locates the mihomo binary in PATH or at the default install location.
 func FindBinary() (string, error) {
-	// Try "mihomo" first, then "clash" as fallback
+	// Try "mihomo" first, then "clash-meta", then "clash"
 	for _, name := range []string{"mihomo", "clash-meta", "clash"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return path, nil
 		}
 	}
+
+	// Fall back to clashctl's default install path
+	if _, err := os.Stat(InstallPath); err == nil {
+		return InstallPath, nil
+	}
+
 	return "", fmt.Errorf("未找到 mihomo 可执行文件。请先安装 Mihomo 并确保其在 PATH 中")
 }
 
