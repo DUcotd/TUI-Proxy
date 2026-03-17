@@ -16,8 +16,8 @@ import (
 
 const (
 	githubOwner = "DUcotd"
-	githubRepo  = "TUI-Proxy"
-	currentVer  = "v1.1.0"
+	githubRepo  = "clashctl"
+	currentVer  = "v2.0.0"
 )
 
 var updateCmd = &cobra.Command{
