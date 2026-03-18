@@ -31,17 +31,56 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 				Type: "select",
 				Use:  []string{"airport"},
 			},
+			{
+				Name:     "auto",
+				Type:     "url-test",
+				Use:      []string{"airport"},
+				URL:      "https://cp.cloudflare.com/",
+				Interval: 300,
+			},
+			{
+				Name:     "fallback",
+				Type:     "fallback",
+				Use:      []string{"airport"},
+				URL:      "https://cp.cloudflare.com/",
+				Interval: 300,
+			},
 		},
 		DNS: &DNSConfig{
 			Enable:       true,
 			IPv6:         false,
 			EnhancedMode: "fake-ip",
-			NameServer:   []string{
+			FakeIPRange:  "198.18.0.1/16",
+			NameServer: []string{
 				"https://1.1.1.1/dns-query",
 				"https://dns.google/dns-query",
 			},
+			Fallback: []string{
+				"https://1.1.1.1/dns-query",
+				"https://dns.google/dns-query",
+				"tls://8.8.4.4:853",
+			},
+			DefaultNameserver: []string{
+				"223.5.5.5",
+				"119.29.29.29",
+			},
+			DirectNameserver: []string{
+				"223.5.5.5",
+				"119.29.29.29",
+			},
 		},
 		Rules: []string{
+			// Local/lan traffic
+			"DOMAIN-SUFFIX,local,DIRECT",
+			"IP-CIDR,127.0.0.0/8,DIRECT",
+			"IP-CIDR,172.16.0.0/12,DIRECT",
+			"IP-CIDR,192.168.0.0/16,DIRECT",
+			"IP-CIDR,10.0.0.0/8,DIRECT",
+			"IP-CIDR,100.64.0.0/10,DIRECT",
+			// China mainland - direct
+			"GEOSITE,cn,DIRECT",
+			"GEOIP,CN,DIRECT",
+			// Fallback
 			"MATCH,PROXY",
 		},
 	}

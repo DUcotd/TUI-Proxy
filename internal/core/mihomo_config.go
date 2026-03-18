@@ -53,7 +53,11 @@ type DNSConfig struct {
 	Enable        bool     `yaml:"enable"`
 	IPv6          bool     `yaml:"ipv6"`
 	EnhancedMode  string   `yaml:"enhanced-mode"`
+	FakeIPRange   string   `yaml:"fake-ip-range,omitempty"`
 	NameServer    []string `yaml:"nameserver"`
+	Fallback      []string `yaml:"fallback,omitempty"`
+	DefaultNameserver []string `yaml:"default-nameserver,omitempty"`
+	DirectNameserver  []string `yaml:"direct-nameserver,omitempty"`
 }
 
 // TUNConfig defines the TUN device configuration.

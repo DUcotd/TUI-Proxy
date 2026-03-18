@@ -8,10 +8,18 @@ import (
 	"time"
 )
 
-// CheckURLReachable performs an HTTP HEAD request to verify a URL is accessible.
+// CheckURLReachable performs an HTTP GET request to verify a URL is accessible.
+// Uses GET instead of HEAD because many subscription servers don't support HEAD.
 func CheckURLReachable(rawURL string, timeout time.Duration) error {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("无法构建请求: %w", err)
+	}
+	// Some providers require a User-Agent to return proper content
+	req.Header.Set("User-Agent", "clashctl/2.1.4")
+
 	client := &http.Client{Timeout: timeout}
-	resp, err := client.Head(rawURL)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("无法访问 %s: %w", rawURL, err)
 	}

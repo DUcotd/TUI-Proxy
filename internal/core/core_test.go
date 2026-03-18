@@ -111,9 +111,62 @@ func TestBuildMihomoConfig(t *testing.T) {
 		t.Errorf("DNS enhanced mode = %q, want fake-ip", m.DNS.EnhancedMode)
 	}
 
-	// Check rules
-	if len(m.Rules) == 0 {
-		t.Error("no rules generated")
+	// Check proxy groups - should have PROXY (select), auto (url-test), fallback
+	if len(m.ProxyGroups) != 3 {
+		t.Errorf("expected 3 proxy groups, got %d", len(m.ProxyGroups))
+	}
+
+	groupTypes := make(map[string]string)
+	for _, g := range m.ProxyGroups {
+		groupTypes[g.Name] = g.Type
+	}
+	if groupTypes["PROXY"] != "select" {
+		t.Errorf("PROXY group type = %q, want select", groupTypes["PROXY"])
+	}
+	if groupTypes["auto"] != "url-test" {
+		t.Errorf("auto group type = %q, want url-test", groupTypes["auto"])
+	}
+	if groupTypes["fallback"] != "fallback" {
+		t.Errorf("fallback group type = %q, want fallback", groupTypes["fallback"])
+	}
+
+	// Check DNS enhancements
+	if m.DNS.FakeIPRange != "198.18.0.1/16" {
+		t.Errorf("DNS fake-ip-range = %q, want 198.18.0.1/16", m.DNS.FakeIPRange)
+	}
+	if len(m.DNS.Fallback) == 0 {
+		t.Error("DNS fallback should not be empty")
+	}
+	if len(m.DNS.DefaultNameserver) == 0 {
+		t.Error("DNS default-nameserver should not be empty")
+	}
+	if len(m.DNS.DirectNameserver) == 0 {
+		t.Error("DNS direct-nameserver should not be empty")
+	}
+
+	// Check routing rules - should have DIRECT rules for local/China traffic
+	hasLocalRule := false
+	hasGeoIPRule := false
+	hasMatchRule := false
+	for _, r := range m.Rules {
+		if r == "IP-CIDR,127.0.0.0/8,DIRECT" {
+			hasLocalRule = true
+		}
+		if r == "GEOIP,CN,DIRECT" {
+			hasGeoIPRule = true
+		}
+		if r == "MATCH,PROXY" {
+			hasMatchRule = true
+		}
+	}
+	if !hasLocalRule {
+		t.Error("missing local IP direct rule")
+	}
+	if !hasGeoIPRule {
+		t.Error("missing GEOIP,CN,DIRECT rule")
+	}
+	if !hasMatchRule {
+		t.Error("missing MATCH,PROXY fallback rule")
 	}
 }
 
