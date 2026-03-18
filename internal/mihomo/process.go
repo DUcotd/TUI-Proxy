@@ -20,7 +20,9 @@ func NewProcess(configDir string) *Process {
 	return &Process{ConfigDir: configDir}
 }
 
-// Start launches Mihomo as a background process.
+// Start launches Mihomo as a background daemon process.
+// It redirects stdout/stderr to /dev/null and creates a new process group
+// so the process survives when the parent exits.
 func (p *Process) Start() error {
 	binary, err := FindBinary()
 	if err != nil {
@@ -28,9 +30,26 @@ func (p *Process) Start() error {
 	}
 
 	p.cmd = exec.Command(binary, "-d", p.ConfigDir)
-	p.cmd.Stdout = os.Stdout
-	p.cmd.Stderr = os.Stderr
-	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Redirect to /dev/null so process doesn't hold terminal
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		// Fallback: just discard output
+		p.cmd.Stdout = nil
+		p.cmd.Stderr = nil
+	} else {
+		p.cmd.Stdout = devNull
+		p.cmd.Stderr = devNull
+	}
+
+	// Create new process group and session to fully detach
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+		Setsid:  true, // New session - fully detached from parent terminal
+	}
+
+	// Detach stdin
+	p.cmd.Stdin = nil
 
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("启动 Mihomo 失败: %w", err)
@@ -39,9 +58,12 @@ func (p *Process) Start() error {
 	// Give it a moment to start up
 	time.Sleep(500 * time.Millisecond)
 
-	// Check if it actually started
-	if !p.IsRunning() {
+	// Check if it actually started (use process.Signal(0) which still works)
+	if p.cmd.Process == nil {
 		return fmt.Errorf("Mihomo 进程启动后立即退出")
+	}
+	if err := p.cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		return fmt.Errorf("Mihomo 进程启动后立即退出: %w", err)
 	}
 
 	return nil
@@ -73,6 +95,7 @@ func (p *Process) Stop() error {
 }
 
 // IsRunning checks if the Mihomo process is still alive.
+// Note: After Setsid/detach, this only works if we still have the pid reference.
 func (p *Process) IsRunning() bool {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return false
@@ -80,6 +103,28 @@ func (p *Process) IsRunning() bool {
 	// Signal 0 checks if process exists without sending a signal
 	err := p.cmd.Process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// IsMihomoRunning checks if ANY mihomo process is running (system-wide).
+func IsMihomoRunning() bool {
+	// Check if the controller API is reachable
+	client := NewClient("http://127.0.0.1:9090")
+	return client.CheckConnection() == nil
+}
+
+// KillExistingMihomo kills any running mihomo processes to free the port.
+// Returns true if processes were killed, false if none were found.
+func KillExistingMihomo() bool {
+	// Use pkill to find and kill mihomo processes
+	cmd := exec.Command("pkill", "-9", "mihomo")
+	err := cmd.Run()
+	if err != nil {
+		// pkill returns non-zero if no processes matched - that's fine
+		return false
+	}
+	// Give processes time to die and release ports
+	time.Sleep(1 * time.Second)
+	return true
 }
 
 // FindBinary locates the mihomo binary in PATH or at the default install location.

@@ -82,6 +82,12 @@ func RestartService(serviceName string) error {
 	return err
 }
 
+// HasSystemd checks if systemd is available on this system.
+func HasSystemd() bool {
+	_, err := os.Stat("/run/systemd/system")
+	return err == nil
+}
+
 // ServiceStatus checks if a systemd service is active.
 func ServiceStatus(serviceName string) (bool, error) {
 	output, err := system.RunCommand("systemctl", "is-active", serviceName)

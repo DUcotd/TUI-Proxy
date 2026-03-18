@@ -52,6 +52,12 @@ func (m WizardModel) viewMode() string {
 
 	content += "\n" + InfoStyle.Render("TUN 模式：接管系统全部流量，无需配置应用代理")
 	content += "\n" + InfoStyle.Render("mixed-port 模式：提供本地代理端口，需手动配置应用")
+
+	// Show warning if TUN was auto-detected as unavailable
+	if m.modeIndex == 1 && m.appCfg.Mode == "mixed" {
+		content += "\n\n" + WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，已自动切换到 mixed-port 模式")
+	}
+
 	content += "\n\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 确认 │ Esc 返回")
 
 	return BoxStyle.Render(content)

@@ -43,9 +43,20 @@ func (m WizardModel) executeFull() []ExecStep {
 		return steps
 	}
 
-	// Step 6: Check /dev/net/tun (TUN mode only)
+	// Step 6: Check /dev/net/tun (TUN mode only) - auto fallback to mixed-port
 	if m.appCfg.Mode == "tun" {
-		m.stepCheckTUN(&steps)
+		if !m.stepCheckTUNWithFallback(mihomoCfg, &steps) {
+			// TUN not available, re-generate config in mixed-port mode
+			m.appCfg.Mode = "mixed"
+			mihomoCfg = core.BuildMihomoConfig(m.appCfg)
+			yamlData, ok = m.stepRenderYAML(mihomoCfg, &steps)
+			if !ok {
+				return steps
+			}
+			if !m.stepWriteConfig(mihomoCfg, configPath, yamlData, &steps) {
+				return steps
+			}
+		}
 	}
 
 	// Step 7: Setup systemd or start process
@@ -188,28 +199,30 @@ func (m WizardModel) stepWriteConfig(cfg *core.MihomoConfig, path string, data [
 	return true
 }
 
-func (m WizardModel) stepCheckTUN(steps *[]ExecStep) {
-	if _, err := system.StatFile("/dev/net/tun"); err != nil {
+// stepCheckTUNWithFallback checks TUN availability.
+// Returns true if TUN is usable, false if we need to fall back to mixed-port.
+func (m WizardModel) stepCheckTUNWithFallback(mihomoCfg *core.MihomoConfig, steps *[]ExecStep) bool {
+	if !mihomo.CanUseTUN() {
+		reasons := []string{}
+		if _, err := system.StatFile("/dev/net/tun"); err != nil {
+			reasons = append(reasons, "/dev/net/tun 不存在")
+		}
+		if !system.CommandExists("iptables") {
+			reasons = append(reasons, "iptables 未安装")
+		}
 		*steps = append(*steps, ExecStep{
 			Label:   "检查 TUN 设备",
 			Success: false,
-			Detail:  "/dev/net/tun 不存在，请运行: sudo modprobe tun",
+			Detail:  fmt.Sprintf("TUN 不可用: %s\n自动降级到 mixed-port 模式...", fmt.Sprintf("%v", reasons)),
 		})
-		return
-	}
-	if err := mihomo.CheckTUNPermission(); err != nil {
-		*steps = append(*steps, ExecStep{
-			Label:   "检查 TUN 权限",
-			Success: false,
-			Detail:  err.Error(),
-		})
-		return
+		return false
 	}
 	*steps = append(*steps, ExecStep{
 		Label:   "TUN 设备 & 权限",
 		Success: true,
-		Detail:  "/dev/net/tun 可用，权限正常",
+		Detail:  "/dev/net/tun 可用，iptables 已安装",
 	})
+	return true
 }
 
 func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
@@ -242,6 +255,15 @@ func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
 }
 
 func (m WizardModel) stepStartProcess(steps *[]ExecStep) {
+	// Kill any existing mihomo processes to avoid port conflicts
+	if killed := mihomo.KillExistingMihomo(); killed {
+		*steps = append(*steps, ExecStep{
+			Label:   "清理旧进程",
+			Success: true,
+			Detail:  "已停止旧的 Mihomo 进程",
+		})
+	}
+
 	proc := mihomo.NewProcess(m.appCfg.ConfigDir)
 	if err := proc.Start(); err != nil {
 		*steps = append(*steps, ExecStep{

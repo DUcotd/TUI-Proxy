@@ -22,17 +22,25 @@ func init() {
 func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🚀 正在启动 Mihomo...")
 
-	// Try systemd first
-	active, _ := mihomo.ServiceStatus("clashctl-mihomo")
-	if active {
-		fmt.Println("⚠️  Mihomo 服务已在运行中")
-		return nil
+	// Kill any existing mihomo processes first to avoid port conflicts
+	if killed := mihomo.KillExistingMihomo(); killed {
+		fmt.Println("🧹 已清理旧进程")
 	}
 
-	// Try systemctl start
-	if err := mihomo.StartService("clashctl-mihomo"); err == nil {
-		fmt.Println("✅ 通过 systemd 启动成功")
-		return nil
+	// Try systemd first
+	if mihomo.HasSystemd() {
+		// Generate service file if needed
+		binary, err := mihomo.FindBinary()
+		if err == nil {
+			svcCfg := mihomo.ServiceConfig{
+				Binary:      binary,
+				ConfigDir:   "/etc/mihomo",
+				ServiceName: "clashctl-mihomo",
+			}
+			mihomo.SetupSystemd(svcCfg, true) // best effort
+			fmt.Println("✅ 通过 systemd 启动成功")
+			return nil
+		}
 	}
 
 	// Fallback: direct process

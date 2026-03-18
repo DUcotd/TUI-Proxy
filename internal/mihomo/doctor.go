@@ -32,6 +32,11 @@ func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
 		results = append(results, checkTUNDevice())
 	}
 
+	// 3b. Check iptables (required for TUN mode auto-route)
+	if tunMode {
+		results = append(results, checkIptables())
+	}
+
 	// 4. Check root privilege (for TUN mode)
 	if tunMode {
 		results = append(results, checkRootPrivilege())
@@ -111,6 +116,21 @@ func checkTUNDevice() CheckResult {
 	}
 }
 
+func checkIptables() CheckResult {
+	if !system.CommandExists("iptables") {
+		return CheckResult{
+			Name:    "iptables",
+			Passed:  false,
+			Problem: "未找到 iptables，TUN 模式需要 iptables 进行流量路由",
+			Suggest: "安装 iptables: apt install iptables / yum install iptables\n或使用 mixed-port 模式代替 TUN 模式",
+		}
+	}
+	return CheckResult{
+		Name:   "iptables",
+		Passed: true,
+	}
+}
+
 func checkRootPrivilege() CheckResult {
 	if !system.IsRoot() {
 		return CheckResult{
@@ -128,10 +148,25 @@ func checkRootPrivilege() CheckResult {
 
 func checkControllerPort(controllerAddr string) CheckResult {
 	if system.CheckPortInUse(controllerAddr) {
+		// Port is in use - check if it's actually a working Mihomo instance
+		client := NewClient("http://" + controllerAddr)
+		if err := client.CheckConnection(); err == nil {
+			// Mihomo is running and responding - this is fine
+			version, _ := client.Version()
+			detail := "端口被 Mihomo 正常占用"
+			if version != "" {
+				detail += " (" + version + ")"
+			}
+			return CheckResult{
+				Name:   "controller 端口",
+				Passed: true,
+				Problem: detail,
+			}
+		}
 		return CheckResult{
 			Name:    "controller 端口",
 			Passed:  false,
-			Problem: fmt.Sprintf("端口 %s 已被占用", controllerAddr),
+			Problem: fmt.Sprintf("端口 %s 已被其他进程占用", controllerAddr),
 			Suggest: "请确认没有其他 Mihomo 实例在运行，或修改 external-controller 地址",
 		}
 	}
@@ -145,9 +180,8 @@ func checkSystemd() CheckResult {
 	if _, err := os.Stat("/run/systemd/system"); os.IsNotExist(err) {
 		return CheckResult{
 			Name:    "systemd",
-			Passed:  false,
-			Problem: "未检测到 systemd",
-			Suggest: "此系统不支持 systemd，将无法使用服务管理模式",
+			Passed:  true, // Not a failure - expected in containers
+			Problem: "未检测到 systemd（容器环境正常），将使用子进程模式管理",
 		}
 	}
 	return CheckResult{
@@ -230,6 +264,20 @@ func checkMihomoRunning(controllerAddr string) CheckResult {
 		Passed: true,
 		Problem: detail,
 	}
+}
+
+// CanUseTUN checks if TUN mode is viable on this system.
+// Returns true only if /dev/net/tun exists AND iptables is available.
+func CanUseTUN() bool {
+	// Check /dev/net/tun exists
+	if _, err := os.Stat("/dev/net/tun"); os.IsNotExist(err) {
+		return false
+	}
+	// Check iptables is available (needed for auto-route)
+	if !system.CommandExists("iptables") {
+		return false
+	}
+	return true
 }
 
 // CheckTUNPermission checks if we can actually create a TUN interface.

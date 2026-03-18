@@ -13,6 +13,14 @@ import (
 	"clashctl/internal/mihomo"
 )
 
+// boolToInt converts a bool to int (false=0, true=1).
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // WizardModel is the main TUI state.
 type WizardModel struct {
 	screen    Screen
@@ -133,9 +141,17 @@ func NewWizard() WizardModel {
 	s.Spinner = spinner.Dot
 	s.Style = SpinnerStyle
 
+	// Auto-detect TUN capability and fall back to mixed-port if unavailable
+	appCfg := core.DefaultAppConfig()
+	tunAvailable := mihomo.CanUseTUN()
+	if !tunAvailable {
+		appCfg.Mode = "mixed"
+	}
+
 	return WizardModel{
 		screen:         ScreenWelcome,
-		appCfg:         core.DefaultAppConfig(),
+		appCfg:         appCfg,
+		modeIndex:      boolToInt(!tunAvailable), // 0 = TUN, 1 = mixed-port
 		urlInput:       urlInput,
 		advancedFields: fields,
 		advancedInputs: advInputs,

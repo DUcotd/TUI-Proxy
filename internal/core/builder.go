@@ -1,6 +1,21 @@
 // Package core provides configuration building logic.
 package core
 
+import (
+	"net/url"
+)
+
+// extractSubscriptionDomain extracts the hostname from a subscription URL
+// so we can add a DIRECT rule to prevent the chicken-and-egg problem
+// where Mihomo tries to fetch the subscription through itself.
+func extractSubscriptionDomain(subURL string) string {
+	u, err := url.Parse(subURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
 // BuildMihomoConfig generates a MihomoConfig from the given AppConfig.
 func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 	m := &MihomoConfig{
@@ -69,21 +84,34 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 				"119.29.29.29",
 			},
 		},
-		Rules: []string{
-			// Local/lan traffic
-			"DOMAIN-SUFFIX,local,DIRECT",
-			"IP-CIDR,127.0.0.0/8,DIRECT",
-			"IP-CIDR,172.16.0.0/12,DIRECT",
-			"IP-CIDR,192.168.0.0/16,DIRECT",
-			"IP-CIDR,10.0.0.0/8,DIRECT",
-			"IP-CIDR,100.64.0.0/10,DIRECT",
-			// China mainland - direct
-			"GEOSITE,cn,DIRECT",
-			"GEOIP,CN,DIRECT",
-			// Fallback
-			"MATCH,PROXY",
-		},
 	}
+
+	// Build rules list
+	rules := []string{
+		// Local/lan traffic
+		"DOMAIN-SUFFIX,local,DIRECT",
+		"IP-CIDR,127.0.0.0/8,DIRECT",
+		"IP-CIDR,172.16.0.0/12,DIRECT",
+		"IP-CIDR,192.168.0.0/16,DIRECT",
+		"IP-CIDR,10.0.0.0/8,DIRECT",
+		"IP-CIDR,100.64.0.0/10,DIRECT",
+	}
+
+	// Fix: Add subscription domain as DIRECT to avoid chicken-and-egg problem
+	// where Mihomo tries to fetch subscription through the proxy itself
+	if subDomain := extractSubscriptionDomain(cfg.SubscriptionURL); subDomain != "" {
+		rules = append(rules, "DOMAIN,"+subDomain+",DIRECT")
+	}
+
+	// China mainland - direct
+	rules = append(rules,
+		"GEOSITE,cn,DIRECT",
+		"GEOIP,CN,DIRECT",
+	)
+
+	// Fallback
+	rules = append(rules, "MATCH,PROXY")
+	m.Rules = rules
 
 	// Add TUN config only in TUN mode
 	if cfg.Mode == "tun" {
