@@ -107,6 +107,7 @@ install_clashctl() {
     # Check local binary first
     if [ -f "./clashctl-linux-amd64" ]; then
         info "检测到本地文件，直接安装"
+        mkdir -p "$INSTALL_DIR"
         cp ./clashctl-linux-amd64 "$INSTALL_DIR/clashctl"
         chmod +x "$INSTALL_DIR/clashctl"
         ok "clashctl → $INSTALL_DIR/clashctl"
@@ -132,6 +133,7 @@ install_clashctl() {
     fi
 
     info "下载 ${DIM}$CLASHCTL_VERSION${RESET}..."
+    mkdir -p "$INSTALL_DIR"
     download_file "$url" "$INSTALL_DIR/clashctl" || die "clashctl 下载失败: $url"
     chmod +x "$INSTALL_DIR/clashctl"
     ok "clashctl → $INSTALL_DIR/clashctl"
@@ -172,14 +174,14 @@ install_mihomo() {
     MIHOMO_VERSION="$(python3 -c "import json; print(json.load(open('$tmpfile'))['tag_name'])")"
     info "版本: ${DIM}$MIHOMO_VERSION${RESET}"
 
-    # Find download URL via python3
+    # Find download URL via python3 - filter for linux specifically
     local mihomo_url
     mihomo_url="$(python3 -c "
 import json
 assets = json.load(open('$tmpfile')).get('assets', [])
 arch = '$GOARCH'
 skip = ('.deb', '.rpm', '.zst', '.pkg.tar', '.txt', '.sig')
-cands = [a for a in assets if arch in a['name'] and not any(s in a['name'] for s in skip)]
+cands = [a for a in assets if 'linux' in a['name'] and arch in a['name'] and not any(s in a['name'] for s in skip)]
 if cands:
     gz = [a for a in cands if a['name'].endswith('.gz')]
     print(gz[0]['browser_download_url'] if gz else cands[0]['browser_download_url'])
@@ -187,6 +189,7 @@ if cands:
 
     [ -n "${mihomo_url:-}" ] || die "找不到匹配 $GOARCH 的 Mihomo 二进制"
 
+    mkdir -p "$INSTALL_DIR"
     info "下载 ${DIM}$(basename "$mihomo_url")${RESET}..."
 
     if [[ "$mihomo_url" == *.gz ]]; then
