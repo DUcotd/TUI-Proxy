@@ -27,14 +27,16 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Println("🧹 已清理旧进程")
 	}
 
+	configDir := core.DefaultConfigDir
+
 	// Try systemd first
 	if mihomo.HasSystemd() {
 		binary, err := mihomo.FindBinary()
 		if err == nil {
 			svcCfg := mihomo.ServiceConfig{
 				Binary:      binary,
-				ConfigDir:   "/etc/mihomo",
-				ServiceName: "clashctl-mihomo",
+				ConfigDir:   configDir,
+				ServiceName: core.DefaultServiceName,
 			}
 			if err := mihomo.SetupSystemd(svcCfg, true); err == nil {
 				fmt.Println("✅ 通过 systemd 启动成功")
@@ -45,7 +47,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fallback: direct process
-	proc := mihomo.NewProcess("/etc/mihomo")
+	proc := mihomo.NewProcess(configDir)
 	if err := proc.Start(); err != nil {
 		return fmt.Errorf("启动失败: %w", err)
 	}

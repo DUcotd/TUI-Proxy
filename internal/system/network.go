@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"clashctl/internal/core"
 )
 
 // CheckURLReachable performs an HTTP GET request to verify a URL is accessible.
@@ -16,7 +18,7 @@ func CheckURLReachable(rawURL string, timeout time.Duration) error {
 		return fmt.Errorf("无法构建请求: %w", err)
 	}
 	// Some providers require a User-Agent to return proper content
-	req.Header.Set("User-Agent", "clashctl/2.1.4")
+	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
 
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
@@ -48,7 +50,7 @@ func LookupHost(host string) (string, error) {
 		return "", err
 	}
 	if len(addrs) == 0 {
-		return "", fmt.Errorf("no addresses found for %s", host)
+		return "", fmt.Errorf("未找到 %s 的解析地址", host)
 	}
 	return addrs[0], nil
 }

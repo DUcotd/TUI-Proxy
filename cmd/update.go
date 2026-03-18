@@ -12,14 +12,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/core"
 	"clashctl/internal/system"
 )
 
 const (
 	githubOwner = "DUcotd"
 	githubRepo  = "clashctl"
-	currentVer  = "v2.3.1"
 )
+
+// currentVer references the canonical version from core.
+var currentVer = core.AppVersion
 
 var updateCmd = &cobra.Command{
 	Use:   "update",

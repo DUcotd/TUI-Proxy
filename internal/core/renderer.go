@@ -11,7 +11,7 @@ import (
 func RenderYAML(cfg *MihomoConfig) ([]byte, error) {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config to YAML: %w", err)
+		return nil, fmt.Errorf("YAML 序列化失败: %w", err)
 	}
 	return data, nil
 }

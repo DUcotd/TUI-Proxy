@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"clashctl/internal/core"
 )
 
 // Process manages a Mihomo child process.
@@ -32,17 +34,16 @@ func (p *Process) Start() error {
 	p.cmd = exec.Command(binary, "-d", p.ConfigDir)
 
 	// Redirect to /dev/null so process doesn't hold terminal.
-	// NOTE: intentionally not closing devNull — the background process
-	// needs these FDs open for its entire lifetime.
-	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
+	// NOTE: devNull is intentionally not closed — the background child process
+	// needs these FDs open for its entire lifetime. Closing after Start() would
+	// cause write errors in the child.
+	devNull, devErr := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if devErr != nil {
 		p.cmd.Stdout = nil
 		p.cmd.Stderr = nil
 	} else {
 		p.cmd.Stdout = devNull
 		p.cmd.Stderr = devNull
-		// Let the OS clean up when the process exits
-		_ = devNull
 	}
 
 	// Create new process group to detach from parent.
@@ -56,6 +57,10 @@ func (p *Process) Start() error {
 	p.cmd.Stdin = nil
 
 	if err := p.cmd.Start(); err != nil {
+		// Close devNull since child didn't start — FD would leak otherwise
+		if devErr == nil {
+			devNull.Close()
+		}
 		return fmt.Errorf("启动 Mihomo 失败: %w", err)
 	}
 
@@ -64,9 +69,15 @@ func (p *Process) Start() error {
 
 	// Check if it actually started (use process.Signal(0) which still works)
 	if p.cmd.Process == nil {
+		if devErr == nil {
+			devNull.Close()
+		}
 		return fmt.Errorf("Mihomo 进程启动后立即退出")
 	}
 	if err := p.cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		if devErr == nil {
+			devNull.Close()
+		}
 		return fmt.Errorf("Mihomo 进程启动后立即退出: %w", err)
 	}
 
@@ -109,10 +120,15 @@ func (p *Process) IsRunning() bool {
 	return err == nil
 }
 
-// IsMihomoRunning checks if ANY mihomo process is running (system-wide).
+// IsMihomoRunning checks if ANY mihomo process is running (system-wide)
+// by attempting to reach the default controller API.
 func IsMihomoRunning() bool {
-	// Check if the controller API is reachable
-	client := NewClient("http://127.0.0.1:9090")
+	return IsMihomoRunningAt(core.DefaultControllerAddr)
+}
+
+// IsMihomoRunningAt checks if mihomo is running at the given controller address.
+func IsMihomoRunningAt(controllerAddr string) bool {
+	client := NewClient("http://" + controllerAddr)
 	return client.CheckConnection() == nil
 }
 

@@ -2,6 +2,8 @@ package ui
 
 import (
 	"testing"
+
+	"clashctl/internal/mihomo"
 )
 
 func TestScreenStepLabel(t *testing.T) {
@@ -66,7 +68,7 @@ func TestFormatNodeDelay(t *testing.T) {
 		want  string
 	}{
 		{"timeout", -1, "超时"},
-		{"untested", 0, ""},
+		{"untested", 0, "未测试"},
 		{"fast", 50, "50ms ✨"},
 		{"ok", 150, "150ms"},
 		{"slow", 500, "500ms ⚠️"},
@@ -74,9 +76,9 @@ func TestFormatNodeDelay(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := formatNodeDelay(tt.delay)
+			got := mihomo.FormatDelay(tt.delay)
 			if got != tt.want {
-				t.Errorf("formatNodeDelay(%d) = %q, want %q", tt.delay, got, tt.want)
+				t.Errorf("FormatDelay(%d) = %q, want %q", tt.delay, got, tt.want)
 			}
 		})
 	}

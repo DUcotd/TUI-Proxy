@@ -5,7 +5,6 @@ clashctl-*
 *.exe
 
 # Go
-go.sum
 vendor/
 
 # IDE

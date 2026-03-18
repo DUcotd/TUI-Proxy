@@ -20,7 +20,7 @@ func DirWritable(path string) error {
 	testFile := fmt.Sprintf("%s/.clashctl_write_test", path)
 	f, err := os.Create(testFile)
 	if err != nil {
-		return fmt.Errorf("directory %s is not writable: %w", path, err)
+		return fmt.Errorf("目录 %s 不可写: %w", path, err)
 	}
 	f.Close()
 	os.Remove(testFile)

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"clashctl/internal/mihomo"
 )
 
 func (m WizardModel) viewWelcome() string {
@@ -201,9 +203,9 @@ func (m WizardModel) viewNodeSelect() string {
 
 		line := marker + node.Name
 
-		// Show delay if tested
+		// Show delay if tested (using shared FormatDelay from mihomo package)
 		if node.Delay != 0 {
-			delayStr := formatNodeDelay(node.Delay)
+			delayStr := mihomo.FormatDelay(node.Delay)
 			line += " " + delayStyle(node.Delay).Render(delayStr)
 		}
 
@@ -221,23 +223,6 @@ func (m WizardModel) viewNodeSelect() string {
 	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
 
 	return BoxStyle.Render(content)
-}
-
-func formatNodeDelay(delay int) string {
-	switch {
-	case delay < 0:
-		return "超时"
-	case delay == 0:
-		return ""
-	case delay < 100:
-		return fmt.Sprintf("%dms ✨", delay)
-	case delay < 300:
-		return fmt.Sprintf("%dms", delay)
-	case delay < 1000:
-		return fmt.Sprintf("%dms ⚠️", delay)
-	default:
-		return fmt.Sprintf("%.1fs 🔴", float64(delay)/1000)
-	}
 }
 
 func delayStyle(delay int) lipgloss.Style {

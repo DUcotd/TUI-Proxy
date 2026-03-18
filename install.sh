@@ -161,7 +161,7 @@ install_clashctl() {
         local ver_tmp
         ver_tmp="$(mktemp)"
         if curl -sfL --connect-timeout "$TIMEOUT" "https://api.github.com/repos/$CLASHCTL_REPO/releases/latest" -o "$ver_tmp" 2>/dev/null; then
-            CLASHCTL_VERSION="$(python3 -c "import json; print(json.load(open('$ver_tmp'))['tag_name'])" 2>/dev/null)" || CLASHCTL_VERSION="latest"
+            CLASHCTL_VERSION="$(grep -m1 '"tag_name"' "$ver_tmp" | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')" || CLASHCTL_VERSION="latest"
         fi
         rm -f "$ver_tmp"
     fi
@@ -225,21 +225,22 @@ install_mihomo() {
             || die "无法获取 Mihomo $MIHOMO_VERSION"
     fi
 
-    MIHOMO_VERSION="$(python3 -c "import json; print(json.load(open('$tmpfile'))['tag_name'])")"
+    MIHOMO_VERSION="$(grep -m1 '"tag_name"' "$tmpfile" | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
     info "版本: ${DIM}$MIHOMO_VERSION${RESET}"
 
-    # Find download URL via python3 - filter for linux specifically
+    # Find download URL — grep for linux + arch in asset names, prefer .gz
     local mihomo_url
-    mihomo_url="$(python3 -c "
-import json
-assets = json.load(open('$tmpfile')).get('assets', [])
-arch = '$GOARCH'
-skip = ('.deb', '.rpm', '.zst', '.pkg.tar', '.txt', '.sig')
-cands = [a for a in assets if 'linux' in a['name'] and arch in a['name'] and not any(s in a['name'] for s in skip)]
-if cands:
-    gz = [a for a in cands if a['name'].endswith('.gz')]
-    print(gz[0]['browser_download_url'] if gz else cands[0]['browser_download_url'])
-" 2>/dev/null)" || true
+    # First try .gz
+    mihomo_url="$(grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmpfile" \
+        | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
+        | grep -i "linux" | grep -i "$GOARCH" | grep '\.gz$' | grep -v 'pkg\.tar' | head -1)" || true
+    # Fallback: any matching binary (not .deb/.rpm/.zst/.txt/.sig)
+    if [ -z "$mihomo_url" ]; then
+        mihomo_url="$(grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmpfile" \
+            | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
+            | grep -i "linux" | grep -i "$GOARCH" \
+            | grep -v '\.deb$' | grep -v '\.rpm$' | grep -v '\.zst$' | grep -v '\.txt$' | grep -v '\.sig$' | head -1)" || true
+    fi
 
     [ -n "${mihomo_url:-}" ] || die "找不到匹配 $GOARCH 的 Mihomo 二进制"
 

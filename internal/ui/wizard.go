@@ -553,18 +553,24 @@ func (m WizardModel) handleNodeTested(msg nodeTestedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// testAllNodes tests latency for all nodes concurrently.
+// testAllNodes tests latency for all nodes with bounded concurrency.
 func (m WizardModel) testAllNodes() tea.Cmd {
 	return func() tea.Msg {
 		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
 		delays := make(map[int]int)
+
+		// Limit concurrent requests to avoid overwhelming the subscription server
+		const maxConcurrent = 10
+		sem := make(chan struct{}, maxConcurrent)
 		ch := make(chan struct {
 			index int
 			delay int
 		}, len(m.nodes))
 
 		for i, node := range m.nodes {
+			sem <- struct{}{} // acquire slot
 			go func(idx int, name string) {
+				defer func() { <-sem }() // release slot
 				delay := client.TestNode(m.selectedGroup, name)
 				ch <- struct {
 					index int

@@ -22,11 +22,11 @@ func BackupFile(path string) (string, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read %s for backup: %w", path, err)
+		return "", fmt.Errorf("读取 %s 备份失败: %w", path, err)
 	}
 
 	if err := os.WriteFile(backupPath, data, 0644); err != nil {
-		return "", fmt.Errorf("failed to write backup to %s: %w", backupPath, err)
+		return "", fmt.Errorf("写入备份到 %s 失败: %w", backupPath, err)
 	}
 
 	return backupPath, nil
@@ -36,11 +36,11 @@ func BackupFile(path string) (string, error) {
 func WriteConfig(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		return fmt.Errorf("创建目录 %s 失败: %w", dir, err)
 	}
 
 	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config to %s: %w", path, err)
+		return fmt.Errorf("写入配置到 %s 失败: %w", path, err)
 	}
 
 	return nil
@@ -50,12 +50,12 @@ func WriteConfig(path string, data []byte) error {
 func ValidateYAML(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", path, err)
+		return fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 
 	var dummy any
 	if err := yaml.Unmarshal(data, &dummy); err != nil {
-		return fmt.Errorf("YAML parse error in %s: %w", path, err)
+		return fmt.Errorf("YAML 解析错误 %s: %w", path, err)
 	}
 
 	return nil

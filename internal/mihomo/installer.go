@@ -120,24 +120,55 @@ func findMihomoAsset(release *MihomoRelease) (string, bool) {
 	// Prefer uncompressed binary first
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
-		if strings.Contains(name, goos) && strings.Contains(name, goarch) &&
-			!strings.HasSuffix(name, ".gz") && !strings.HasSuffix(name, ".zip") &&
-			!strings.HasSuffix(name, ".deb") && !strings.HasSuffix(name, ".rpm") &&
-			!strings.HasSuffix(name, ".zst") {
-			return asset.BrowserDownloadURL, false
+		if !isPlatformMatch(name, goos, goarch) {
+			continue
 		}
+		if strings.HasSuffix(name, ".gz") || strings.HasSuffix(name, ".zip") ||
+			strings.HasSuffix(name, ".deb") || strings.HasSuffix(name, ".rpm") ||
+			strings.HasSuffix(name, ".zst") {
+			continue
+		}
+		return asset.BrowserDownloadURL, false
 	}
 
 	// Then try .gz (most common for mihomo releases)
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
-		if strings.Contains(name, goos) && strings.Contains(name, goarch) &&
-			strings.HasSuffix(name, ".gz") && !strings.Contains(name, "pkg.tar") {
+		if !isPlatformMatch(name, goos, goarch) {
+			continue
+		}
+		if strings.HasSuffix(name, ".gz") && !strings.Contains(name, "pkg.tar") {
 			return asset.BrowserDownloadURL, true
 		}
 	}
 
 	return "", false
+}
+
+// isPlatformMatch checks if an asset name matches the target OS and architecture.
+// It uses word-boundary-aware matching to avoid "arm" matching "arm64".
+func isPlatformMatch(name, goos, goarch string) bool {
+	if !strings.Contains(name, goos) {
+		return false
+	}
+	if goarch == "arm" {
+		// "arm" must not be followed by "64" (avoid matching "arm64")
+		idx := strings.Index(name, "arm")
+		for idx >= 0 {
+			end := idx + 3
+			if end+1 <= len(name) && name[end:end+2] == "64" {
+				// This is "arm64", keep searching
+				idx = strings.Index(name[end:], "arm")
+				if idx >= 0 {
+					idx += end
+				}
+				continue
+			}
+			return true
+		}
+		return false
+	}
+	return strings.Contains(name, goarch)
 }
 
 // downloadBinary downloads a file from url to destPath.
