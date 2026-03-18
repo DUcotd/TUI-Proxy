@@ -42,14 +42,12 @@ func (p *Process) Start() error {
 		p.cmd.Stderr = devNull
 	}
 
-	// Create new process group to detach from parent
-	// Note: Setsid requires special permissions in some container environments,
-	// so we try Setsid first and fall back to just Setpgid.
+	// Create new process group to detach from parent.
+	// Note: Setsid is blocked in some container environments (CAP_SYS_ADMIN required),
+	// so we only use Setpgid which works everywhere.
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
-	// Try to add Setsid for full detachment (best effort)
-	p.cmd.SysProcAttr.Setsid = true
 
 	// Detach stdin
 	p.cmd.Stdin = nil
