@@ -30,34 +30,27 @@ SKIP_MIHOMO=false
 SKIP_CLASHCTL=false
 CLASHCTL_VERSION="latest"
 MIHOMO_VERSION="latest"
-YES=false
 
 usage() {
-    cat <<EOF
-${BOLD}clashctl 安装脚本${RESET}
+    cat <<'USAGE'
+📦 clashctl 安装脚本
 
-${BOLD}用法:${RESET}
+用法:
   install.sh [选项]
 
-${BOLD}选项:${RESET}
-  --clashctl-only     只安装 clashctl
-  --mihomo-only       只安装 Mihomo
-  --clashctl-version  指定 clashctl 版本 (默认: latest)
-  --mihomo-version    指定 Mihomo 版本 (默认: latest)
-  --install-dir       安装目录 (默认: /usr/local/bin)
-  -y, --yes           跳过确认
-  -h, --help          显示帮助
+选项:
+  --clashctl-only       只安装 clashctl
+  --mihomo-only         只安装 Mihomo
+  --clashctl-version X  指定 clashctl 版本 (默认: latest)
+  --mihomo-version X    指定 Mihomo 版本 (默认: latest)
+  --install-dir X       安装目录 (默认: /usr/local/bin)
+  -h, --help            显示帮助
 
-${BOLD}示例:${RESET}
-  # 一键安装全部
+示例:
   curl -sL https://raw.githubusercontent.com/DUcotd/clashctl/main/install.sh | sudo bash
-
-  # 只安装 clashctl
   sudo bash install.sh --clashctl-only
-
-  # 指定版本
-  sudo bash install.sh --clashctl-version v2.3.0 --mihomo-version v1.19.0
-EOF
+  sudo bash install.sh --clashctl-version v2.3.0
+USAGE
     exit 0
 }
 
@@ -68,7 +61,6 @@ while [[ $# -gt 0 ]]; do
         --clashctl-version) CLASHCTL_VERSION="$2"; shift ;;
         --mihomo-version)   MIHOMO_VERSION="$2"; shift ;;
         --install-dir)      INSTALL_DIR="$2"; shift ;;
-        -y|--yes)           YES=true ;;
         -h|--help)          usage ;;
         *)                  die "未知选项: $1 (用 -h 查看帮助)" ;;
     esac
@@ -79,8 +71,8 @@ done
 [ "$EUID" -eq 0 ] || die "请使用 sudo 运行: sudo bash $0"
 command -v curl &>/dev/null || die "需要 curl，请先安装"
 
-OS=$(uname -s)
-ARCH=$(uname -m)
+OS="$(uname -s)"
+ARCH="$(uname -m)"
 [ "$OS" = "Linux" ] || die "暂仅支持 Linux，当前: $OS"
 
 case "$ARCH" in
@@ -90,29 +82,43 @@ case "$ARCH" in
     *)              die "不支持的架构: $ARCH" ;;
 esac
 
-# ─── Download helper with retry ───
-download() {
+# ─── Download to file with retry ───
+download_file() {
     local url="$1" output="$2"
     local attempt=0
-    while [ $attempt -lt $MAX_RETRIES ]; do
-        if [ -n "$output" ]; then
-            if curl -sfL --connect-timeout "$TIMEOUT" --retry 2 "$url" -o "$output"; then
-                return 0
-            fi
-        else
-            if curl -sfL --connect-timeout "$TIMEOUT" --retry 2 "$url"; then
-                return 0
-            fi
+    while [ "$attempt" -lt "$MAX_RETRIES" ]; do
+        if curl -sfL --connect-timeout "$TIMEOUT" --retry 2 "$url" -o "$output"; then
+            return 0
         fi
         attempt=$((attempt + 1))
-        [ $attempt -lt $MAX_RETRIES ] && warn "下载失败，重试 ($attempt/$MAX_RETRIES)..." && sleep 2
+        if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+            warn "下载失败，重试 ($attempt/$MAX_RETRIES)..."
+            sleep 2
+        fi
     done
     return 1
 }
 
-# ─── JSON helper ───
-json_field() {
-    python3 -c "import sys,json; print(json.load(sys.stdin)$1)" 2>/dev/null
+# ─── Download to stdout with retry ───
+download_stdout() {
+    local url="$1"
+    local attempt=0
+    while [ "$attempt" -lt "$MAX_RETRIES" ]; do
+        if curl -sfL --connect-timeout "$TIMEOUT" --retry 2 "$url"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+            warn "请求失败，重试 ($attempt/$MAX_RETRIES)..."
+            sleep 2
+        fi
+    done
+    return 1
+}
+
+# ─── JSON field extractor ───
+json_val() {
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(d$1)"
 }
 
 # ─── Install clashctl ───
@@ -132,9 +138,12 @@ install_clashctl() {
     # Resolve version
     if [ "$CLASHCTL_VERSION" = "latest" ]; then
         info "获取最新版本..."
-        local tag
-        tag=$(download "https://api.github.com/repos/$CLASHCTL_REPO/releases/latest" | json_field "['tag_name']") || true
-        CLASHCTL_VERSION="${tag:-latest}"
+        CLASHCTL_VERSION="latest"
+        local ver
+        ver="$(download_stdout "https://api.github.com/repos/$CLASHCTL_REPO/releases/latest" 2>/dev/null | json_val "['tag_name']" 2>/dev/null)" || true
+        if [ -n "${ver:-}" ]; then
+            CLASHCTL_VERSION="$ver"
+        fi
     fi
 
     local url
@@ -145,7 +154,7 @@ install_clashctl() {
     fi
 
     info "下载 ${DIM}$CLASHCTL_VERSION${RESET}..."
-    download "$url" "$INSTALL_DIR/clashctl" || die "clashctl 下载失败: $url"
+    download_file "$url" "$INSTALL_DIR/clashctl" || die "clashctl 下载失败: $url"
     chmod +x "$INSTALL_DIR/clashctl"
     ok "clashctl → $INSTALL_DIR/clashctl"
 }
@@ -158,50 +167,57 @@ install_mihomo() {
     # Already installed?
     if command -v mihomo &>/dev/null; then
         local ver
-        ver=$(mihomo -v 2>/dev/null | head -1 || echo "unknown")
+        ver="$(mihomo -v 2>/dev/null | head -1)" || ver="unknown"
         if [ "$MIHOMO_VERSION" = "latest" ]; then
-            ok "已安装: $ver，跳过 (用 --mihomo-version 强制覆盖)"
+            ok "已安装: $ver，跳过"
             return
         else
             info "已安装 $ver，将覆盖为 $MIHOMO_VERSION"
         fi
     fi
 
-    # Resolve version & URL
-    local release_json
+    # Resolve release info
+    local release_json tmpfile
+    tmpfile="$(mktemp)"
+    trap 'rm -f "$tmpfile"' RETURN
+
     if [ "$MIHOMO_VERSION" = "latest" ]; then
         info "获取最新版本..."
-        release_json=$(download "https://api.github.com/repos/$MIHOMO_REPO/releases/latest") || die "无法获取 Mihomo 版本信息"
-        MIHOMO_VERSION=$(echo "$release_json" | json_field "['tag_name']")
+        download_file "https://api.github.com/repos/$MIHOMO_REPO/releases/latest" "$tmpfile" \
+            || die "无法获取 Mihomo 版本信息"
     else
-        release_json=$(download "https://api.github.com/repos/$MIHOMO_REPO/releases/tags/$MIHOMO_VERSION") || die "无法获取 Mihomo $MIHOMO_VERSION"
+        info "获取版本 $MIHOMO_VERSION..."
+        download_file "https://api.github.com/repos/$MIHOMO_REPO/releases/tags/$MIHOMO_VERSION" "$tmpfile" \
+            || die "无法获取 Mihomo $MIHOMO_VERSION"
     fi
 
+    release_json="$(cat "$tmpfile")"
+    MIHOMO_VERSION="$(echo "$release_json" | json_val "['tag_name']")"
     info "版本: ${DIM}$MIHOMO_VERSION${RESET}"
 
-    # Find download URL - prefer .gz, then plain binary
+    # Find download URL via python3
     local mihomo_url
-    mihomo_url=$(echo "$release_json" | python3 -c "
+    mihomo_url="$(echo "$release_json" | python3 -c "
 import sys, json
 assets = json.load(sys.stdin).get('assets', [])
 arch = '$GOARCH'
-# Priority: .gz > plain binary (skip .deb, .rpm, .zst, .pkg.tar)
-candidates = [a for a in assets if arch in a['name'] and not any(x in a['name'] for x in ['.deb', '.rpm', '.zst', '.pkg.tar'])]
-if candidates:
-    # Prefer .gz first
-    gz = [a for a in candidates if a['name'].endswith('.gz')]
-    print(gz[0]['browser_download_url'] if gz else candidates[0]['browser_download_url'])
-" 2>/dev/null) || true
+skip = ('.deb', '.rpm', '.zst', '.pkg.tar', '.txt', '.sig')
+cands = [a for a in assets if arch in a['name'] and not any(s in a['name'] for s in skip)]
+if cands:
+    gz = [a for a in cands if a['name'].endswith('.gz')]
+    print(gz[0]['browser_download_url'] if gz else cands[0]['browser_download_url'])
+" 2>/dev/null)" || true
 
-    [ -n "$mihomo_url" ] || die "找不到架构匹配的 Mihomo 二进制 ($GOARCH)"
+    [ -n "${mihomo_url:-}" ] || die "找不到匹配 $GOARCH 的 Mihomo 二进制"
 
-    info "下载中 ${DIM}$(basename "$mihomo_url")${RESET}..."
+    info "下载 ${DIM}$(basename "$mihomo_url")${RESET}..."
 
     if [[ "$mihomo_url" == *.gz ]]; then
-        download "$mihomo_url" - | gzip -d > "$INSTALL_DIR/mihomo" 2>/dev/null \
-            || die "Mihomo 下载/解压失败"
+        local gzfile="$tmpfile.gz"
+        download_file "$mihomo_url" "$gzfile" || die "Mihomo 下载失败"
+        gzip -d -c "$gzfile" > "$INSTALL_DIR/mihomo" || die "解压失败"
     else
-        download "$mihomo_url" "$INSTALL_DIR/mihomo" || die "Mihomo 下载失败"
+        download_file "$mihomo_url" "$INSTALL_DIR/mihomo" || die "Mihomo 下载失败"
     fi
 
     chmod +x "$INSTALL_DIR/mihomo"
