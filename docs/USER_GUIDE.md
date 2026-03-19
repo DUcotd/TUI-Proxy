@@ -69,6 +69,13 @@ clashctl nodes use "节点名" [组名]    # 切换节点
 clashctl nodes groups               # 列出所有代理组
 ```
 
+### clashctl tui nodes
+直接进入节点管理 TUI，可在界面里测速并切换节点。
+
+```bash
+clashctl tui nodes
+```
+
 ### clashctl config
 配置查看。
 

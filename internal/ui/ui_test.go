@@ -129,6 +129,40 @@ func TestNewWizardDefaults(t *testing.T) {
 	}
 }
 
+func TestNewNodeManagerDefaults(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+
+	if manager.screen != ScreenGroupSelect {
+		t.Fatalf("screen = %v, want ScreenGroupSelect", manager.screen)
+	}
+	if !manager.standaloneNodes {
+		t.Fatal("standaloneNodes should be true")
+	}
+	if !manager.loading {
+		t.Fatal("loading should be true")
+	}
+	if manager.title != "📡 clashctl 节点管理" {
+		t.Fatalf("title = %q", manager.title)
+	}
+}
+
+func TestStandaloneNodeManagerViewUsesNodeTitle(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+	manager.loading = false
+	manager.groups = []GroupItem{{Name: "PROXY", Type: "select", NodeCount: 3}}
+	manager.width = 80
+	manager.height = 24
+	manager.ensureViewport()
+
+	view := manager.View()
+	if !strings.Contains(view, "📡 clashctl 节点管理") {
+		t.Fatalf("view missing node manager title:\n%s", view)
+	}
+	if strings.Contains(view, "步骤 7/8") {
+		t.Fatalf("view should not include wizard step label:\n%s", view)
+	}
+}
+
 func TestWizardCompleted(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 	if wizard.Completed() {

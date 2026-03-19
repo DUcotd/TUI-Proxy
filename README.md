@@ -70,6 +70,7 @@ clashctl nodes list
 clashctl nodes use "节点名称"
 clashctl nodes test
 clashctl nodes test --all-groups
+clashctl tui nodes
 ```
 
 ## TUI 节点管理
@@ -86,6 +87,12 @@ clashctl nodes test --all-groups
 
 延迟显示：`✨ <100ms` → `100-300ms` → `⚠️ 300-1000ms` → `🔴 >1s` → `超时`
 
+也可以直接跳过向导进入节点管理：
+
+```bash
+clashctl tui nodes
+```
+
 ## 命令列表
 
 | 命令 | 说明 |
@@ -100,6 +107,7 @@ clashctl nodes test --all-groups
 | `clashctl status` | 查看运行状态 |
 | `clashctl doctor` | 环境自检（默认 8 项，`--tun` 时 11 项） |
 | `clashctl doctor openai` | 诊断 OpenAI/Codex 登录链路 |
+| `clashctl tui nodes` | 直接进入节点测速与切换 TUI |
 | `clashctl nodes list` | 列出代理节点 |
 | `clashctl nodes test` | 测试代理组节点延迟 |
 | `clashctl nodes use` | 切换代理节点 |

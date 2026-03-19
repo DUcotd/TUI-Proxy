@@ -23,6 +23,7 @@ type WizardModel struct {
 	width    int
 	height   int
 	quitting bool
+	title    string
 
 	// Subscription URL input
 	sourceMode  SubscriptionSource
@@ -50,6 +51,7 @@ type WizardModel struct {
 
 	// Controller availability (set after execution)
 	controllerAvailable bool
+	standaloneNodes     bool
 
 	// Node selection state
 	spinner       spinner.Model
@@ -189,6 +191,7 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	return WizardModel{
 		screen:         ScreenWelcome,
 		appCfg:         appCfg,
+		title:          "🧙 clashctl 配置向导",
 		sourceMode:     SubscriptionSourceURL,
 		modeIndex:      modeIndex,
 		urlInput:       urlInput,
@@ -202,7 +205,22 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	}
 }
 
+// NewNodeManager creates a standalone node-management TUI starting from group selection.
+func NewNodeManager(appCfg *core.AppConfig) WizardModel {
+	m := NewWizard(appCfg)
+	m.screen = ScreenGroupSelect
+	m.title = "📡 clashctl 节点管理"
+	m.controllerAvailable = true
+	m.standaloneNodes = true
+	m.loading = true
+	m.loadingMsg = "正在加载代理组..."
+	return m
+}
+
 func (m WizardModel) Init() tea.Cmd {
+	if m.standaloneNodes && m.screen == ScreenGroupSelect && m.loading {
+		return tea.Batch(m.spinner.Tick, m.loadGroups())
+	}
 	return textinput.Blink
 }
 
@@ -945,11 +963,11 @@ func (m WizardModel) View() string {
 	var b strings.Builder
 
 	// Title
-	b.WriteString(TitleStyle.Render("🧙 clashctl 配置向导"))
+	b.WriteString(TitleStyle.Render(m.title))
 	b.WriteString("\n")
 
 	// Step indicator (except welcome)
-	if m.screen != ScreenWelcome {
+	if m.screen != ScreenWelcome && !m.standaloneNodes {
 		b.WriteString(StepStyle.Render(m.screen.StepLabel()))
 		b.WriteString("\n\n")
 	}
