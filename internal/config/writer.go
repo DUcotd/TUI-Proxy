@@ -34,3 +34,18 @@ func SaveMihomoConfig(cfg *core.MihomoConfig, path string) (backupPath string, e
 
 	return backupPath, nil
 }
+
+// SaveRawYAML writes already-prepared YAML data with backup and validation.
+func SaveRawYAML(data []byte, path string) (backupPath string, err error) {
+	backupPath, err = BackupFile(path)
+	if err != nil {
+		return "", fmt.Errorf("备份失败: %w", err)
+	}
+	if err := WriteConfig(path, data); err != nil {
+		return backupPath, err
+	}
+	if err := ValidateYAML(path); err != nil {
+		return backupPath, fmt.Errorf("写入的配置校验失败: %w", err)
+	}
+	return backupPath, nil
+}

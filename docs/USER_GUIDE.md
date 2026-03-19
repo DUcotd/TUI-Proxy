@@ -23,6 +23,8 @@ sudo clashctl init
 ### clashctl init
 启动交互式配置向导。
 
+默认只需要输入订阅 URL 或本地订阅文件路径。`init` 会优先把订阅转成更适合服务器使用的静态配置，尽量减少 provider 拉取失败带来的问题。
+
 ### clashctl export
 导出 Mihomo 配置文件。
 

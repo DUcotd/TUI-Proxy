@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"clashctl/internal/core"
+	"clashctl/internal/system"
 )
 
 const (
@@ -47,6 +48,7 @@ func (p *Process) Start() error {
 	}
 
 	p.cmd = exec.Command(binary, "-d", p.ConfigDir)
+	p.cmd.Env = system.StripProxyEnv(os.Environ())
 
 	// Open /dev/null for redirecting child process output.
 	// After Start(), we close the parent's copy — the child inherits its own FD via fork.

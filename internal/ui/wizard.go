@@ -103,7 +103,7 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 
 	// URL input
 	urlInput := textinput.New()
-	urlInput.Placeholder = "https://example.com/subscription"
+	urlInput.Placeholder = "https://订阅链接 或 /path/to/sub.txt"
 	urlInput.SetValue(appCfg.SubscriptionURL)
 	urlInput.Focus()
 	urlInput.Width = 60
@@ -312,11 +312,24 @@ func (m WizardModel) updateWelcome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		url := strings.TrimSpace(m.urlInput.Value())
-		if url == "" {
+		input := strings.TrimSpace(m.urlInput.Value())
+		if input == "" {
 			return m, nil
 		}
-		m.appCfg.SubscriptionURL = url
+		m.appCfg.Mode = "mixed"
+		if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+			m.appCfg.SubscriptionURL = input
+			m.setScreen(ScreenExecution)
+			return m, tea.Batch(m.spinner.Tick, m.runExecution())
+		}
+		m.importInput.SetValue(input)
+		m.setScreen(ScreenExecution)
+		return m, tea.Batch(m.spinner.Tick, m.runImportExecution(input))
+	case "a":
+		input := strings.TrimSpace(m.urlInput.Value())
+		if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+			m.appCfg.SubscriptionURL = input
+		}
 		m.setScreen(ScreenMode)
 		return m, nil
 	case "esc":

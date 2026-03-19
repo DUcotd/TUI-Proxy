@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
@@ -161,5 +163,32 @@ func TestNewWizardUsesPersistedValues(t *testing.T) {
 	}
 	if wizard.advancedInputs[1].Value() != cfg.ControllerAddr {
 		t.Errorf("controller input = %q, want %q", wizard.advancedInputs[1].Value(), cfg.ControllerAddr)
+	}
+}
+
+func TestSubscriptionEnterStartsExecutionForURL(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenSubscription
+	wizard.urlInput.SetValue("https://example.com/sub")
+
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(WizardModel)
+	if got.screen != ScreenExecution {
+		t.Fatalf("screen = %v, want ScreenExecution", got.screen)
+	}
+	if got.appCfg.Mode != "mixed" {
+		t.Fatalf("mode = %q, want mixed", got.appCfg.Mode)
+	}
+}
+
+func TestSubscriptionAEntersAdvanced(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenSubscription
+	wizard.urlInput.SetValue("https://example.com/sub")
+
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	got := updated.(WizardModel)
+	if got.screen != ScreenMode {
+		t.Fatalf("screen = %v, want ScreenMode", got.screen)
 	}
 }

@@ -1,6 +1,7 @@
 package system
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -57,5 +58,23 @@ func TestLookupHost(t *testing.T) {
 	// localhost should resolve to 127.0.0.1 or ::1
 	if addr != "127.0.0.1" && addr != "::1" {
 		t.Errorf("LookupHost(localhost) = %q, want 127.0.0.1 or ::1", addr)
+	}
+}
+
+func TestStripProxyEnv(t *testing.T) {
+	env := []string{
+		"PATH=/usr/bin",
+		"http_proxy=http://127.0.0.1:7890",
+		"HTTPS_PROXY=http://127.0.0.1:7890",
+		"NO_PROXY=localhost",
+		"HOME=/root",
+	}
+	want := []string{
+		"PATH=/usr/bin",
+		"HOME=/root",
+	}
+	got := StripProxyEnv(env)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("StripProxyEnv() = %#v, want %#v", got, want)
 	}
 }

@@ -29,10 +29,11 @@ func (m WizardModel) viewWelcome() string {
 }
 
 func (m WizardModel) viewSubscription() string {
-	content := HeaderStyle.Render("请输入你的机场订阅 URL") + "\n\n" +
-		InfoStyle.Render("订阅链接通常以 https:// 开头，由你的机场服务商提供") + "\n\n" +
+	content := HeaderStyle.Render("输入订阅链接或本地订阅文件") + "\n\n" +
+		InfoStyle.Render("推荐直接粘贴订阅 URL；如果服务器拉取失败，也可以填本地文件路径") + "\n" +
+		InfoStyle.Render("默认会自动转换成更适合服务器的静态配置，尽量减少后续问题") + "\n\n" +
 		m.urlInput.View() + "\n\n" +
-		HelpStyle.Render("按 Enter 确认 │ 按 Esc 返回")
+		HelpStyle.Render("Enter 一键配置 │ a 高级设置 │ Esc 返回")
 
 	return BoxStyle.Render(content)
 }

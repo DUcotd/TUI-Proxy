@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -17,6 +18,23 @@ type URLProbeResult struct {
 	StatusCode  int
 	ContentKind string
 	BodyPreview string
+	UsedProxy   bool
+}
+
+func directHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			Proxy: nil,
+			DialContext: (&net.Dialer{
+				Timeout:   timeout,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			TLSHandshakeTimeout:   timeout,
+			ResponseHeaderTimeout: timeout,
+		},
+	}
 }
 
 // CheckURLReachable performs an HTTP GET request to verify a URL is accessible.
@@ -35,7 +53,7 @@ func ProbeURL(rawURL string, timeout time.Duration) (*URLProbeResult, error) {
 	// Some providers require a User-Agent to return proper content
 	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
 
-	client := &http.Client{Timeout: timeout}
+	client := directHTTPClient(timeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("无法访问 %s: %w", rawURL, err)
@@ -51,7 +69,81 @@ func ProbeURL(rawURL string, timeout time.Duration) (*URLProbeResult, error) {
 		StatusCode:  resp.StatusCode,
 		ContentKind: classifyBody(body),
 		BodyPreview: string(body),
+		UsedProxy:   hasProxyEnv(),
 	}, nil
+}
+
+// FetchURLContent fetches the full body of a URL using a direct connection.
+func FetchURLContent(rawURL string, timeout time.Duration, maxSize int64) ([]byte, *URLProbeResult, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("无法构建请求: %w", err)
+	}
+	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+
+	resp, err := directHTTPClient(timeout).Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("无法访问 %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, nil, fmt.Errorf("%s 返回 HTTP %d", rawURL, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
+	if err != nil {
+		return nil, nil, fmt.Errorf("读取 %s 响应失败: %w", rawURL, err)
+	}
+	probe := &URLProbeResult{
+		StatusCode:  resp.StatusCode,
+		ContentKind: classifyBody(body),
+		BodyPreview: string(body[:minInt(len(body), 4096)]),
+		UsedProxy:   hasProxyEnv(),
+	}
+	return body, probe, nil
+}
+
+func hasProxyEnv() bool {
+	for _, key := range []string{"http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"} {
+		if strings.TrimSpace(os.Getenv(key)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// StripProxyEnv removes proxy-related variables from an environment list.
+func StripProxyEnv(env []string) []string {
+	blocked := map[string]struct{}{
+		"http_proxy":  {},
+		"https_proxy": {},
+		"all_proxy":   {},
+		"HTTP_PROXY":  {},
+		"HTTPS_PROXY": {},
+		"ALL_PROXY":   {},
+		"no_proxy":    {},
+		"NO_PROXY":    {},
+	}
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key := entry
+		if idx := strings.IndexByte(entry, '='); idx >= 0 {
+			key = entry[:idx]
+		}
+		if _, skip := blocked[key]; skip {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func classifyBody(body []byte) string {

@@ -16,48 +16,44 @@ import (
 	"clashctl/internal/system"
 )
 
+type configPlan struct {
+	mihomoCfg *core.MihomoConfig
+	rawYAML   []byte
+	detail    string
+}
+
 // executeFull performs the full configuration and startup pipeline.
 func (m WizardModel) executeFull() []ExecStep {
 	var steps []ExecStep
 
-	// Step 1: Validate URL (network check)
-	steps = append(steps, m.stepCheckURL())
-
-	// Step 2: Check mihomo binary
+	// Step 1: Check mihomo binary
 	binary, binaryOK := m.stepCheckBinary(&steps)
 	if !binaryOK {
 		return steps
 	}
 
-	// Step 3: Build config
-	mihomoCfg, ok := m.stepBuildConfig(&steps)
+	// Step 2: Resolve subscription and build config plan
+	plan, ok := m.stepResolveConfig(&steps)
 	if !ok {
 		return steps
 	}
 
-	// Step 4: Render YAML
-	_, ok = m.stepRenderYAML(mihomoCfg, &steps)
-	if !ok {
-		return steps
-	}
-
-	// Step 5: Write config file
+	// Step 3: Write config file
 	configPath := m.appCfg.ConfigDir + "/config.yaml"
-	if !m.stepWriteConfig(mihomoCfg, configPath, &steps) {
+	if !m.stepWritePlan(plan, configPath, &steps) {
 		return steps
 	}
 
-	// Step 6: Check /dev/net/tun (TUN mode only) - auto fallback to mixed-port
+	// Step 4: Check /dev/net/tun (TUN mode only) - auto fallback to mixed-port
 	if m.appCfg.Mode == "tun" {
-		if !m.stepCheckTUNWithFallback(mihomoCfg, &steps) {
+		if !m.stepCheckTUNWithFallback(plan.mihomoCfg, &steps) {
 			// TUN not available, re-generate config in mixed-port mode
 			m.appCfg.Mode = "mixed"
-			mihomoCfg = core.BuildMihomoConfig(m.appCfg)
-			_, ok = m.stepRenderYAML(mihomoCfg, &steps)
+			fallbackPlan, ok := m.stepResolveConfig(&steps)
 			if !ok {
 				return steps
 			}
-			if !m.stepWriteConfig(mihomoCfg, configPath, &steps) {
+			if !m.stepWritePlan(fallbackPlan, configPath, &steps) {
 				return steps
 			}
 		}
@@ -94,31 +90,6 @@ func (m WizardModel) executeFull() []ExecStep {
 	}
 
 	return steps
-}
-
-func (m WizardModel) stepCheckURL() ExecStep {
-	probe, err := system.ProbeURL(m.appCfg.SubscriptionURL, 10*time.Second)
-	if err != nil {
-		return ExecStep{
-			Label:   "检查订阅 URL 可达性",
-			Success: false,
-			Detail:  err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl import --file sub.txt' 生成静态配置\n(仅警告，配置仍会生成)",
-		}
-	}
-	detail := "URL 可正常访问"
-	switch probe.ContentKind {
-	case "base64-links", "raw-links":
-		detail += "\n检测到原始节点订阅（非 YAML），必要时可用 'clashctl import --file ...' 转为静态配置"
-	case "mihomo-yaml":
-		detail += "\n检测到 Mihomo/Clash YAML 内容"
-	case "html":
-		detail += "\n警告: 返回内容像 HTML 页面，请确认这是真正的订阅链接"
-	}
-	return ExecStep{
-		Label:   "检查订阅 URL 可达性",
-		Success: true,
-		Detail:  detail,
-	}
 }
 
 func (m WizardModel) stepCheckBinary(steps *[]ExecStep) (string, bool) {
@@ -160,7 +131,7 @@ func (m WizardModel) stepCheckBinary(steps *[]ExecStep) (string, bool) {
 	return binary, true
 }
 
-func (m WizardModel) stepBuildConfig(steps *[]ExecStep) (*core.MihomoConfig, bool) {
+func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
 	if errs := m.appCfg.Validate(); len(errs) > 0 {
 		*steps = append(*steps, ExecStep{
 			Label:   "验证配置参数",
@@ -170,13 +141,50 @@ func (m WizardModel) stepBuildConfig(steps *[]ExecStep) (*core.MihomoConfig, boo
 		return nil, false
 	}
 
-	cfg := core.BuildMihomoConfig(m.appCfg)
+	body, probe, err := system.FetchURLContent(m.appCfg.SubscriptionURL, 15*time.Second, 20*1024*1024)
+	if err != nil {
+		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl import --file sub.txt --apply --start'"
+		if mihomo.IsMihomoRunningAt(m.appCfg.ControllerAddr) {
+			detail += "\n检测到当前已有 Mihomo 在运行；旧代理链路或系统代理可能干扰了本次检查"
+		}
+		*steps = append(*steps, ExecStep{Label: "获取订阅内容", Success: false, Detail: detail})
+		return nil, false
+	}
+
+	detail := fmt.Sprintf("已下载订阅内容 (%s)", probe.ContentKind)
+	if probe.UsedProxy {
+		detail += "\n已忽略当前 shell 中的代理环境变量，直接探测订阅地址"
+	}
 	*steps = append(*steps, ExecStep{
-		Label:   "生成 Mihomo 配置",
+		Label:   "获取订阅内容",
 		Success: true,
-		Detail:  fmt.Sprintf("模式: %s, 订阅: %s", m.appCfg.Mode, m.appCfg.SubscriptionURL),
+		Detail:  detail,
 	})
-	return cfg, true
+
+	if probe.ContentKind == "raw-links" || probe.ContentKind == "base64-links" {
+		parsed, err := subscription.Parse(body)
+		if err != nil {
+			*steps = append(*steps, ExecStep{Label: "解析订阅内容", Success: false, Detail: err.Error()})
+			return nil, false
+		}
+		*steps = append(*steps, ExecStep{Label: "解析订阅内容", Success: true, Detail: fmt.Sprintf("已解析 %d 个节点，默认使用静态配置", len(parsed.Names))})
+		cfg := core.BuildStaticMihomoConfig(m.appCfg, parsed.Proxies, parsed.Names)
+		return &configPlan{mihomoCfg: cfg, detail: fmt.Sprintf("静态配置已生成 (%d 个节点)", len(parsed.Names))}, true
+	}
+
+	if probe.ContentKind == "mihomo-yaml" {
+		patched, err := subscription.PatchRemoteYAML(body, m.appCfg)
+		if err != nil {
+			*steps = append(*steps, ExecStep{Label: "处理订阅 YAML", Success: false, Detail: err.Error()})
+			return nil, false
+		}
+		*steps = append(*steps, ExecStep{Label: "处理订阅 YAML", Success: true, Detail: "检测到 Mihomo/Clash YAML，已直接转为本地静态配置"})
+		return &configPlan{rawYAML: patched, detail: "已使用远程 YAML 作为本地配置"}, true
+	}
+
+	providerCfg := core.BuildMihomoConfig(m.appCfg)
+	*steps = append(*steps, ExecStep{Label: "生成 Mihomo 配置", Success: true, Detail: fmt.Sprintf("未识别为原始节点订阅，回退为 provider 模式: %s", m.appCfg.SubscriptionURL)})
+	return &configPlan{mihomoCfg: providerCfg, detail: "已生成 provider 配置"}, true
 }
 
 func (m WizardModel) stepRenderYAML(cfg *core.MihomoConfig, steps *[]ExecStep) ([]byte, bool) {
@@ -195,6 +203,41 @@ func (m WizardModel) stepRenderYAML(cfg *core.MihomoConfig, steps *[]ExecStep) (
 		Detail:  fmt.Sprintf("%d bytes", len(data)),
 	})
 	return data, true
+}
+
+func (m WizardModel) stepWritePlan(plan *configPlan, path string, steps *[]ExecStep) bool {
+	if plan == nil {
+		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: "配置计划为空"})
+		return false
+	}
+	if len(plan.rawYAML) > 0 {
+		return m.stepWriteRawConfig(plan.rawYAML, path, steps)
+	}
+	if plan.mihomoCfg == nil {
+		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: "未生成可写入的配置"})
+		return false
+	}
+	_, _ = m.stepRenderYAML(plan.mihomoCfg, steps)
+	return m.stepWriteConfig(plan.mihomoCfg, path, steps)
+}
+
+func (m WizardModel) stepWriteRawConfig(data []byte, path string, steps *[]ExecStep) bool {
+	if err := system.EnsureDir(m.appCfg.ConfigDir); err != nil {
+		*steps = append(*steps, ExecStep{Label: "创建配置目录", Success: false, Detail: err.Error()})
+		return false
+	}
+	*steps = append(*steps, ExecStep{Label: "创建配置目录", Success: true, Detail: m.appCfg.ConfigDir})
+	backupPath, err := config.SaveRawYAML(data, path)
+	if err != nil {
+		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: err.Error()})
+		return false
+	}
+	detail := fmt.Sprintf("已写入 %s\n静态配置优先，后续无需服务器再次拉取订阅", path)
+	if backupPath != "" {
+		detail += "\n旧配置已备份至: " + backupPath
+	}
+	*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: true, Detail: detail})
+	return true
 }
 
 func (m WizardModel) stepWriteConfig(cfg *core.MihomoConfig, path string, steps *[]ExecStep) bool {

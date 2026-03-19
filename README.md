@@ -109,6 +109,7 @@ clashctl nodes use "节点名称"
 - Linux (systemd 发行版，Ubuntu 22.04+ / Debian 12+)
 - TUN 模式需要 root 权限
 - Mihomo 会在首次使用时自动下载，也可手动安装
+- `init` 默认优先将订阅转成更适合服务器使用的静态配置，尽量避免服务器再次直连拉取 provider
 - `mixed-port` 模式只提供本地代理端口，服务器流量需要显式配置代理环境变量
 
 ## 文档
