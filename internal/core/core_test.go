@@ -31,9 +31,9 @@ func TestValidateURL(t *testing.T) {
 
 func TestAppConfigValidate(t *testing.T) {
 	tests := []struct {
-		name      string
-		cfg       *AppConfig
-		wantErrs  int
+		name     string
+		cfg      *AppConfig
+		wantErrs int
 	}{
 		{"valid tun", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1:9090"}, 0},
 		{"empty url", &AppConfig{SubscriptionURL: "", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1:9090"}, 1},

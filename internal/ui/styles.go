@@ -92,7 +92,7 @@ var (
 			Foreground(lipgloss.Color("#EF4444"))
 
 	DelayUnknownStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#6B7280"))
+				Foreground(lipgloss.Color("#6B7280"))
 
 	// Current selection marker
 	ActiveMarkerStyle = lipgloss.NewStyle().
@@ -131,9 +131,9 @@ var (
 				Padding(0, 1)
 
 	ProtocolSSStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#F472B6")).
-				Background(lipgloss.Color("#500724")).
-				Padding(0, 1)
+			Foreground(lipgloss.Color("#F472B6")).
+			Background(lipgloss.Color("#500724")).
+			Padding(0, 1)
 
 	ProtocolUnknownStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#94A3B8")).

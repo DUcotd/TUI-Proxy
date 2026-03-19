@@ -76,8 +76,8 @@ func checkBinary() CheckResult {
 	}
 	version, _ := GetBinaryVersion()
 	return CheckResult{
-		Name:   "mihomo 可执行文件",
-		Passed: true,
+		Name:    "mihomo 可执行文件",
+		Passed:  true,
 		Problem: fmt.Sprintf("已找到: %s (%s)", binary, version),
 	}
 }
@@ -162,8 +162,8 @@ func checkControllerPort(controllerAddr string) CheckResult {
 				detail += " (" + version + ")"
 			}
 			return CheckResult{
-				Name:   "controller 端口",
-				Passed: true,
+				Name:    "controller 端口",
+				Passed:  true,
 				Problem: detail,
 			}
 		}
@@ -223,8 +223,8 @@ func checkDiskSpace(dir string) CheckResult {
 		}
 	}
 	return CheckResult{
-		Name:   "磁盘空间",
-		Passed: true,
+		Name:    "磁盘空间",
+		Passed:  true,
 		Problem: fmt.Sprintf("%.1f GB 可用", availGB),
 	}
 }
@@ -241,8 +241,8 @@ func checkDNS() CheckResult {
 		}
 	}
 	return CheckResult{
-		Name:   "DNS 解析",
-		Passed: true,
+		Name:    "DNS 解析",
+		Passed:  true,
 		Problem: fmt.Sprintf("cp.cloudflare.com → %s", addrs),
 	}
 }
@@ -264,8 +264,8 @@ func checkMihomoRunning(controllerAddr string) CheckResult {
 		detail += " (" + version + ")"
 	}
 	return CheckResult{
-		Name:   "Mihomo 运行状态",
-		Passed: true,
+		Name:    "Mihomo 运行状态",
+		Passed:  true,
 		Problem: detail,
 	}
 }

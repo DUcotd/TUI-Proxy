@@ -3,25 +3,25 @@ package core
 
 // MihomoConfig represents the full Mihomo configuration file.
 type MihomoConfig struct {
-	MixedPort        int                      `yaml:"mixed-port"`
-	AllowLan         bool                     `yaml:"allow-lan"`
-	Mode             string                   `yaml:"mode"`
-	LogLevel         string                   `yaml:"log-level"`
-	ExternalController string                 `yaml:"external-controller"`
-	ProxyProviders   map[string]*ProxyProvider `yaml:"proxy-providers"`
-	ProxyGroups      []*ProxyGroup            `yaml:"proxy-groups"`
-	DNS              *DNSConfig               `yaml:"dns,omitempty"`
-	TUN              *TUNConfig               `yaml:"tun,omitempty"`
-	Rules            []string                 `yaml:"rules"`
+	MixedPort          int                       `yaml:"mixed-port"`
+	AllowLan           bool                      `yaml:"allow-lan"`
+	Mode               string                    `yaml:"mode"`
+	LogLevel           string                    `yaml:"log-level"`
+	ExternalController string                    `yaml:"external-controller"`
+	ProxyProviders     map[string]*ProxyProvider `yaml:"proxy-providers"`
+	ProxyGroups        []*ProxyGroup             `yaml:"proxy-groups"`
+	DNS                *DNSConfig                `yaml:"dns,omitempty"`
+	TUN                *TUNConfig                `yaml:"tun,omitempty"`
+	Rules              []string                  `yaml:"rules"`
 }
 
 // ProxyProvider defines a proxy provider (typically an HTTP subscription).
 type ProxyProvider struct {
-	Type        string      `yaml:"type"`
-	URL         string      `yaml:"url"`
-	Path        string      `yaml:"path"`
-	Interval    int         `yaml:"interval"`
-	Override    *Override   `yaml:"override,omitempty"`
+	Type        string       `yaml:"type"`
+	URL         string       `yaml:"url"`
+	Path        string       `yaml:"path"`
+	Interval    int          `yaml:"interval"`
+	Override    *Override    `yaml:"override,omitempty"`
 	HealthCheck *HealthCheck `yaml:"health-check"`
 }
 
@@ -50,12 +50,12 @@ type ProxyGroup struct {
 
 // DNSConfig defines the DNS configuration.
 type DNSConfig struct {
-	Enable        bool     `yaml:"enable"`
-	IPv6          bool     `yaml:"ipv6"`
-	EnhancedMode  string   `yaml:"enhanced-mode"`
-	FakeIPRange   string   `yaml:"fake-ip-range,omitempty"`
-	NameServer    []string `yaml:"nameserver"`
-	Fallback      []string `yaml:"fallback,omitempty"`
+	Enable            bool     `yaml:"enable"`
+	IPv6              bool     `yaml:"ipv6"`
+	EnhancedMode      string   `yaml:"enhanced-mode"`
+	FakeIPRange       string   `yaml:"fake-ip-range,omitempty"`
+	NameServer        []string `yaml:"nameserver"`
+	Fallback          []string `yaml:"fallback,omitempty"`
 	DefaultNameserver []string `yaml:"default-nameserver,omitempty"`
 	DirectNameserver  []string `yaml:"direct-nameserver,omitempty"`
 }

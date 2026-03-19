@@ -5,7 +5,7 @@ package ui
 type Screen int
 
 const (
-	ScreenWelcome     Screen = iota
+	ScreenWelcome Screen = iota
 	ScreenSubscription
 	ScreenMode
 	ScreenAdvanced
@@ -66,6 +66,6 @@ type nodeTestedMsg struct {
 
 // executionDoneMsg is sent when executeFull completes.
 type executionDoneMsg struct {
-	steps             []ExecStep
-	controllerReady   bool
+	steps           []ExecStep
+	controllerReady bool
 }

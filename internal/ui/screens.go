@@ -174,9 +174,9 @@ func (m WizardModel) viewGroupSelect() string {
 		line += InfoStyle.Render(fmt.Sprintf(" (%d)", g.NodeCount))
 
 		if i == m.groupIndex {
-			list.WriteString(SelectedStyle.Render("▸ " + line) + "\n")
+			list.WriteString(SelectedStyle.Render("▸ "+line) + "\n")
 		} else {
-			list.WriteString(UnselectedStyle.Render("  " + line) + "\n")
+			list.WriteString(UnselectedStyle.Render("  "+line) + "\n")
 		}
 	}
 
@@ -242,9 +242,9 @@ func (m WizardModel) viewNodeSelect() string {
 		}
 
 		if i == m.nodeIndex {
-			list.WriteString(SelectedStyle.Render("▸ " + strings.TrimSpace(line)) + "\n")
+			list.WriteString(SelectedStyle.Render("▸ "+strings.TrimSpace(line)) + "\n")
 		} else {
-			list.WriteString(UnselectedStyle.Render("  " + strings.TrimSpace(line)) + "\n")
+			list.WriteString(UnselectedStyle.Render("  "+strings.TrimSpace(line)) + "\n")
 		}
 	}
 
