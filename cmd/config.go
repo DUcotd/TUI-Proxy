@@ -8,20 +8,21 @@ import (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "管理配置",
+	Use:    "config",
+	Short:  "管理配置",
+	Hidden: true,
 }
 
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "显示当前 Mihomo 配置",
-	RunE:  runConfigShow,
+	RunE:  legacyRunner("clashctl config show", "clashctl advanced config show", runConfigShow),
 }
 
 var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "显示配置文件路径",
-	RunE:  runConfigPath,
+	RunE:  legacyRunner("clashctl config path", "clashctl advanced config path", runConfigPath),
 }
 
 func init() {

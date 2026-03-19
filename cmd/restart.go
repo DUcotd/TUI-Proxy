@@ -9,9 +9,10 @@ import (
 )
 
 var restartCmd = &cobra.Command{
-	Use:   "restart",
-	Short: "重启 Mihomo 服务",
-	RunE:  runRestart,
+	Use:    "restart",
+	Short:  "重启 Mihomo 服务",
+	Hidden: true,
+	RunE:   legacyRunner("clashctl restart", "clashctl service restart", runRestart),
 }
 
 func init() {

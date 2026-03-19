@@ -9,9 +9,10 @@ import (
 )
 
 var stopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "停止 Mihomo 服务",
-	RunE:  runStop,
+	Use:    "stop",
+	Short:  "停止 Mihomo 服务",
+	Hidden: true,
+	RunE:   legacyRunner("clashctl stop", "clashctl service stop", runStop),
 }
 
 func init() {

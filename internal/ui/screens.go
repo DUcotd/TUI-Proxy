@@ -224,7 +224,7 @@ func (m WizardModel) viewResult() string {
 			return m.renderScrollablePage("执行结果", body.String(), footer)
 		}
 		body.WriteString("\n")
-		body.WriteString(InfoStyle.Render("使用 'clashctl start' 启动服务"))
+		body.WriteString(InfoStyle.Render("使用 'clashctl service start' 启动服务"))
 		body.WriteString("\n")
 		body.WriteString(InfoStyle.Render("使用 'clashctl doctor' 检查环境"))
 		body.WriteString("\n")

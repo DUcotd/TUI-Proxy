@@ -13,13 +13,14 @@ func TestExtractCountry(t *testing.T) {
 }
 
 func TestBuildOpenAIHints(t *testing.T) {
-	hints := buildOpenAIHints(false, true, true, false, true, false, "China", "CN", "United States", "US")
+	hints := buildOpenAIHints(false, true, true, false, true, false, true, false, "China", "CN", "United States", "US")
 	joined := strings.Join(hints, "\n")
 
 	for _, want := range []string{
 		"当前 shell 没有代理环境",
 		"直连 auth.openai.com 正常、代理路径失败",
 		"直连 api.openai.com 正常、代理路径失败",
+		"直连 chatgpt.com/backend-api 正常、代理路径失败",
 		"直连出口是 China (CN)，代理出口是 United States (US)",
 	} {
 		if !strings.Contains(joined, want) {
@@ -34,5 +35,18 @@ func TestFormatCountry(t *testing.T) {
 	}
 	if got := formatCountry("", "US"); got != "US" {
 		t.Fatalf("formatCountry() = %q", got)
+	}
+}
+
+func TestIsOpenAICodexReachableStatus(t *testing.T) {
+	for _, code := range []int{200, 204, 302, 401, 403, 404} {
+		if !isOpenAICodexReachableStatus(code) {
+			t.Fatalf("status %d should be treated as reachable", code)
+		}
+	}
+	for _, code := range []int{400, 429, 500} {
+		if isOpenAICodexReachableStatus(code) {
+			t.Fatalf("status %d should not be treated as reachable", code)
+		}
 	}
 }

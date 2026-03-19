@@ -35,21 +35,26 @@ var importCmd = &cobra.Command{
   - 解码后的 vless:// / trojan:// / hysteria2:// 链接列表
 
 示例：
-  clashctl import -f sub.txt -o config.yaml
-  clashctl import -f links.txt --apply --start
-  cat sub.txt | clashctl import -f - --apply --start`,
-	RunE: runImport,
+  clashctl advanced import -f sub.txt -o config.yaml
+  clashctl advanced import -f links.txt --apply --start
+  cat sub.txt | clashctl advanced import -f - --apply --start`,
+	Hidden: true,
+	RunE:   legacyRunner("clashctl import", "clashctl advanced import", runImport),
 }
 
 func init() {
-	importCmd.Flags().StringVarP(&importFile, "file", "f", "", "本地订阅文件路径（必填）")
-	importCmd.Flags().StringVarP(&importOutput, "output", "o", "config.yaml", "输出文件路径")
-	importCmd.Flags().StringVarP(&importMode, "mode", "m", "mixed", "运行模式: tun 或 mixed")
-	importCmd.Flags().IntVarP(&importMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
-	importCmd.Flags().BoolVar(&importApply, "apply", false, "直接写入当前 clashctl 配置目录")
-	importCmd.Flags().BoolVar(&importStart, "start", false, "写入后立即启动 Mihomo（隐含 --apply）")
-	importCmd.MarkFlagRequired("file")
+	bindImportFlags(importCmd)
 	rootCmd.AddCommand(importCmd)
+}
+
+func bindImportFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&importFile, "file", "f", "", "本地订阅文件路径（必填）")
+	cmd.Flags().StringVarP(&importOutput, "output", "o", "config.yaml", "输出文件路径")
+	cmd.Flags().StringVarP(&importMode, "mode", "m", "mixed", "运行模式: tun 或 mixed")
+	cmd.Flags().IntVarP(&importMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
+	cmd.Flags().BoolVar(&importApply, "apply", false, "直接写入当前 clashctl 配置目录")
+	cmd.Flags().BoolVar(&importStart, "start", false, "写入后立即启动 Mihomo（隐含 --apply）")
+	cmd.MarkFlagRequired("file")
 }
 
 func runImport(cmd *cobra.Command, args []string) error {

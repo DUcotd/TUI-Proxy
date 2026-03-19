@@ -13,7 +13,12 @@ import (
 
 var nodesCmd = &cobra.Command{
 	Use:   "nodes",
-	Short: "管理代理节点",
+	Short: "管理代理节点（默认进入 TUI）",
+	Long: `管理代理节点。
+
+直接执行 'clashctl nodes' 会进入交互式节点管理界面；
+需要脚本化操作时，可继续使用 list / use / groups / test 子命令。`,
+	RunE: runTUINodes,
 }
 
 var nodesListCmd = &cobra.Command{

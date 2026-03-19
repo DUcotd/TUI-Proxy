@@ -11,15 +11,17 @@ import (
 )
 
 var tuiCmd = &cobra.Command{
-	Use:   "tui",
-	Short: "启动交互式管理界面",
+	Use:    "tui",
+	Short:  "启动交互式管理界面",
+	Hidden: true,
 }
 
 var tuiNodesCmd = &cobra.Command{
-	Use:   "nodes",
-	Short: "直接进入节点测速与切换界面",
-	Long:  `跳过 init 向导，直接进入代理组/节点管理 TUI，可测速并切换节点。`,
-	RunE:  runTUINodes,
+	Use:    "nodes",
+	Short:  "直接进入节点测速与切换界面",
+	Long:   `跳过 init 向导，直接进入代理组/节点管理 TUI，可测速并切换节点。`,
+	Hidden: true,
+	RunE:   legacyRunner("clashctl tui nodes", "clashctl nodes", runTUINodes),
 }
 
 func init() {
@@ -35,7 +37,7 @@ func runTUINodes(cmd *cobra.Command, args []string) error {
 
 	client := mihomo.NewClient("http://" + appCfg.ControllerAddr)
 	if err := client.CheckConnection(); err != nil {
-		return fmt.Errorf("Controller API 不可达: %w\n请先运行 'clashctl start' 或完成 'clashctl init'", err)
+		return fmt.Errorf("Controller API 不可达: %w\n请先运行 'clashctl service start' 或完成 'clashctl init'", err)
 	}
 
 	manager := ui.NewNodeManager(appCfg)

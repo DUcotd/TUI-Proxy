@@ -11,10 +11,11 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "查看 Mihomo 运行状态",
-	Long:  `显示 Mihomo 服务状态、配置路径、controller 连接情况和当前代理组信息。`,
-	RunE:  runStatus,
+	Use:    "status",
+	Short:  "查看 Mihomo 运行状态",
+	Long:   `显示 Mihomo 服务状态、配置路径、controller 连接情况和当前代理组信息。`,
+	Hidden: true,
+	RunE:   legacyRunner("clashctl status", "clashctl service status", runStatus),
 }
 
 func init() {
@@ -102,7 +103,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				if inv.OnlyCompatible {
 					fmt.Println("\n  ⚠ 订阅节点未成功加载；当前仅剩 COMPATIBLE。")
 					fmt.Println("    常见原因: 服务器无法直连订阅 URL，或 provider 拉取失败。")
-					fmt.Println("    可改用 'clashctl import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
+					fmt.Println("    可改用 'clashctl advanced import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
 				}
 			}
 		}

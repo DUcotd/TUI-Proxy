@@ -13,12 +13,14 @@ var rootCmd = &cobra.Command{
 	Long: `clashctl 是一个终端交互式工具，帮助你通过输入机场订阅 URL
 快速完成 Mihomo 代理的配置生成、启动与管理。
 
-只需输入订阅链接，clashctl 会自动：
-  - 生成 Mihomo 配置文件
-  - 启动服务
-	  - 检查 Controller API
+推荐主入口：
+  - clashctl init            交互式完成安装、配置、启动
+  - clashctl nodes           进入节点测速与切换 TUI
+  - clashctl service status  查看运行状态
+  - clashctl doctor          环境自检
 
-使用 clashctl init 开始交互式配置向导。`,
+高级/脚本化能力统一放在：
+  - clashctl advanced ...`,
 }
 
 // Execute runs the root command.

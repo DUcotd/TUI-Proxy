@@ -33,7 +33,7 @@ sudo curl -sL https://github.com/DUcotd/clashctl/releases/latest/download/clashc
 sudo chmod +x /usr/local/bin/clashctl
 
 # 安装 Mihomo 内核（自动下载最新版）
-sudo clashctl install
+sudo clashctl advanced install
 ```
 
 ### 从源码编译
@@ -53,24 +53,22 @@ sudo mv clashctl /usr/local/bin/
 # 交互式向导（推荐，全流程）
 sudo clashctl init
 
-# 安装 Mihomo 内核
-sudo clashctl install
-
 # 环境自检
 sudo clashctl doctor
 clashctl doctor openai
 
-# 命令式操作
-sudo clashctl export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
-clashctl import -f sub.txt -o config.yaml
-clashctl import -f sub.txt --apply --start
-sudo clashctl start
-clashctl status
-clashctl nodes list
-clashctl nodes use "节点名称"
+# 日常操作
+clashctl nodes
+clashctl service status
 clashctl nodes test
 clashctl nodes test --all-groups
-clashctl tui nodes
+
+# 高级/脚本化操作
+sudo clashctl advanced install
+sudo clashctl advanced export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
+clashctl advanced import -f sub.txt -o config.yaml
+clashctl advanced import -f sub.txt --apply --start
+sudo clashctl service start
 ```
 
 ## TUI 节点管理
@@ -90,7 +88,7 @@ clashctl tui nodes
 也可以直接跳过向导进入节点管理：
 
 ```bash
-clashctl tui nodes
+clashctl nodes
 ```
 
 ## 命令列表
@@ -98,22 +96,19 @@ clashctl tui nodes
 | 命令 | 说明 |
 |------|------|
 | `clashctl init` | 交互式配置向导（含节点管理） |
-| `clashctl install` | 安装 Mihomo 内核 |
-| `clashctl export` | 导出配置文件 |
-| `clashctl import` | 从本地原始订阅文件生成静态配置，可直接应用并启动 |
-| `clashctl start` | 启动 Mihomo |
-| `clashctl stop` | 停止 Mihomo |
-| `clashctl restart` | 重启 Mihomo |
-| `clashctl status` | 查看运行状态 |
+| `clashctl nodes` | 默认进入节点测速与切换 TUI |
+| `clashctl service ...` | 启动 / 停止 / 重启 / 查看状态 |
 | `clashctl doctor` | 环境自检（默认 8 项，`--tun` 时 11 项） |
-| `clashctl doctor openai` | 诊断 OpenAI/Codex 登录链路 |
-| `clashctl tui nodes` | 直接进入节点测速与切换 TUI |
+| `clashctl doctor openai` | 诊断 OpenAI/Codex 登录链路（含 `chatgpt.com/backend-api`） |
+| `clashctl advanced install` | 安装 Mihomo 内核 |
+| `clashctl advanced export` | 导出配置文件 |
+| `clashctl advanced import` | 从本地原始订阅文件生成静态配置，可直接应用并启动 |
+| `clashctl advanced config show` | 显示配置内容 |
+| `clashctl advanced config path` | 显示配置路径 |
 | `clashctl nodes list` | 列出代理节点 |
 | `clashctl nodes test` | 测试代理组节点延迟 |
 | `clashctl nodes use` | 切换代理节点 |
 | `clashctl nodes groups` | 列出代理组 |
-| `clashctl config show` | 显示配置内容 |
-| `clashctl config path` | 显示配置路径 |
 | `clashctl update` | 检查并更新 clashctl |
 | `clashctl version` | 显示版本信息 |
 

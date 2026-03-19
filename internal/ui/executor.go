@@ -118,7 +118,7 @@ func (m WizardModel) stepResolveRemotePlan(resolver *subscription.Resolver, step
 
 	plan, err := resolver.ResolveRemoteURL(m.appCfg, m.appCfg.SubscriptionURL, 15*time.Second)
 	if err != nil {
-		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl import --file sub.txt --apply --start'"
+		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl advanced import --file sub.txt --apply --start'"
 		if mihomo.IsMihomoRunningAt(m.appCfg.ControllerAddr) {
 			detail += "\n检测到当前已有 Mihomo 在运行；旧代理链路或系统代理可能干扰了本次检查"
 		}
@@ -342,7 +342,7 @@ func (m *WizardModel) appendStartResult(result *mihomo.StartResult, steps *[]Exe
 			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", result.Inventory.Candidates)
 		}
 		detail += "\n常见原因: 服务器无法直连订阅 URL、provider 拉取失败、或订阅返回的是原始节点链接"
-		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl import --file sub.txt -o config.yaml' 生成静态配置"
+		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl advanced import --file sub.txt -o config.yaml' 生成静态配置"
 		*steps = append(*steps, ExecStep{
 			Label:   "验证代理节点加载",
 			Success: false,

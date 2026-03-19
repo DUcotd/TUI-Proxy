@@ -11,10 +11,11 @@ import (
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start",
-	Short: "启动 Mihomo 服务",
-	Long:  `根据已有配置文件启动 Mihomo。优先使用 systemd，否则以子进程方式启动。`,
-	RunE:  runStart,
+	Use:    "start",
+	Short:  "启动 Mihomo 服务",
+	Long:   `根据已有配置文件启动 Mihomo。优先使用 systemd，否则以子进程方式启动。`,
+	Hidden: true,
+	RunE:   legacyRunner("clashctl start", "clashctl service start", runStart),
 }
 
 func init() {

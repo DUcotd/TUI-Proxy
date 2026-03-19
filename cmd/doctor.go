@@ -20,7 +20,7 @@ var doctorCmd = &cobra.Command{
 var doctorOpenAICmd = &cobra.Command{
 	Use:   "openai",
 	Short: "诊断 OpenAI/Codex 登录链路",
-	Long:  `检查当前 shell 代理环境、直连/代理出口地区，以及 auth.openai.com / api.openai.com 的可达性。`,
+	Long:  `检查当前 shell 代理环境、直连/代理出口地区，以及 auth.openai.com / api.openai.com / chatgpt.com/backend-api 的可达性。`,
 	RunE:  runDoctorOpenAI,
 }
 

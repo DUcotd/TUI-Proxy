@@ -22,18 +22,23 @@ var exportCmd = &cobra.Command{
 	Long: `根据指定的参数生成 Mihomo 配置文件并导出。
 
 示例：
-  clashctl export -u https://example.com/sub -o config.yaml
-  clashctl export --url https://example.com/sub --mode mixed --output config.yaml`,
-	RunE: runExport,
+  clashctl advanced export -u https://example.com/sub -o config.yaml
+  clashctl advanced export --url https://example.com/sub --mode mixed --output config.yaml`,
+	Hidden: true,
+	RunE:   legacyRunner("clashctl export", "clashctl advanced export", runExport),
 }
 
 func init() {
-	exportCmd.Flags().StringVarP(&exportSubURL, "url", "u", "", "订阅 URL（必填）")
-	exportCmd.Flags().StringVarP(&exportMode, "mode", "m", "mixed", "运行模式: tun 或 mixed")
-	exportCmd.Flags().IntVarP(&exportMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
-	exportCmd.Flags().StringVarP(&exportOutput, "output", "o", "config.yaml", "输出文件路径")
-	exportCmd.MarkFlagRequired("url")
+	bindExportFlags(exportCmd)
 	rootCmd.AddCommand(exportCmd)
+}
+
+func bindExportFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&exportSubURL, "url", "u", "", "订阅 URL（必填）")
+	cmd.Flags().StringVarP(&exportMode, "mode", "m", "mixed", "运行模式: tun 或 mixed")
+	cmd.Flags().IntVarP(&exportMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
+	cmd.Flags().StringVarP(&exportOutput, "output", "o", "config.yaml", "输出文件路径")
+	cmd.MarkFlagRequired("url")
 }
 
 func runExport(cmd *cobra.Command, args []string) error {

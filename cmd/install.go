@@ -11,10 +11,11 @@ import (
 )
 
 var installCmd = &cobra.Command{
-	Use:   "install",
-	Short: "安装 Mihomo 内核",
-	Long:  `自动下载并安装最新版本的 Mihomo 内核到 /usr/local/bin/mihomo。`,
-	RunE:  runInstall,
+	Use:    "install",
+	Short:  "安装 Mihomo 内核",
+	Long:   `自动下载并安装最新版本的 Mihomo 内核到 /usr/local/bin/mihomo。`,
+	Hidden: true,
+	RunE:   legacyRunner("clashctl install", "clashctl advanced install", runInstall),
 }
 
 func init() {

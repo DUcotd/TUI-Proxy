@@ -11,6 +11,11 @@ import (
 
 const openAIDoctorTimeout = 8 * time.Second
 
+const (
+	openAICodexBaseURL = "https://chatgpt.com/backend-api"
+	openAICodexAPIName = "openai-codex-responses"
+)
+
 // OpenAIDoctorReport contains OpenAI/Codex-specific diagnostic checks and hints.
 type OpenAIDoctorReport struct {
 	Results []CheckResult
@@ -33,11 +38,15 @@ func RunOpenAIDoctor(mixedPort int) *OpenAIDoctorReport {
 	directAPI, directAPIOK := checkOpenAIAPI("api.openai.com（直连）", directClient)
 	report.Results = append(report.Results, directAPI)
 
+	directCodex, directCodexOK := checkOpenAICodexBackend("openai-codex backend（直连）", directClient)
+	report.Results = append(report.Results, directCodex)
+
 	var proxyCountry string
 	var proxyCountryCode string
 	proxyAvailable := false
 	proxyAuthOK := false
 	proxyAPIOK := false
+	proxyCodexOK := false
 
 	if mixedPort > 0 {
 		proxyURL := fmt.Sprintf("http://127.0.0.1:%d", mixedPort)
@@ -64,6 +73,10 @@ func RunOpenAIDoctor(mixedPort int) *OpenAIDoctorReport {
 			proxyAPI, ok := checkOpenAIAPI("api.openai.com（代理）", proxyClient)
 			proxyAPIOK = ok
 			report.Results = append(report.Results, proxyAPI)
+
+			proxyCodex, ok := checkOpenAICodexBackend("openai-codex backend（代理）", proxyClient)
+			proxyCodexOK = ok
+			report.Results = append(report.Results, proxyCodex)
 		}
 	}
 
@@ -75,6 +88,8 @@ func RunOpenAIDoctor(mixedPort int) *OpenAIDoctorReport {
 		proxyAuthOK,
 		directAPIOK,
 		proxyAPIOK,
+		directCodexOK,
+		proxyCodexOK,
 		directCountry,
 		directCountryCode,
 		proxyCountry,
@@ -214,7 +229,48 @@ func checkOpenAIAPI(name string, client *http.Client) (CheckResult, bool) {
 	}, false
 }
 
-func buildOpenAIHints(shellProxy, proxyAvailable, directAuthOK, proxyAuthOK, directAPIOK, proxyAPIOK bool, directCountry, directCountryCode, proxyCountry, proxyCountryCode string) []string {
+func checkOpenAICodexBackend(name string, client *http.Client) (CheckResult, bool) {
+	probe, err := system.ProbeEndpoint(client, openAICodexBaseURL)
+	if err != nil {
+		return CheckResult{
+			Name:    name,
+			Passed:  false,
+			Problem: err.Error(),
+			Suggest: "这通常表示当前链路到 chatgpt.com/backend-api 有问题；如果只在代理路径失败，请切换节点或调整规则",
+		}, false
+	}
+
+	bodyLower := strings.ToLower(probe.BodyPreview)
+	if strings.Contains(bodyLower, "unsupported_country_region_territory") {
+		return CheckResult{
+			Name:    name,
+			Passed:  false,
+			Problem: fmt.Sprintf("HTTP %d，返回 unsupported_country_region_territory", probe.StatusCode),
+			Suggest: "当前出口国家/地区可能不在 OpenAI 支持范围内，或该出口被 openai-codex 的 ChatGPT backend 拒绝",
+		}, false
+	}
+
+	if isOpenAICodexReachableStatus(probe.StatusCode) {
+		detail := fmt.Sprintf("HTTP %d (%s)，对应 %s / %s", probe.StatusCode, probe.FinalURL, openAICodexAPIName, openAICodexBaseURL)
+		if probe.StatusCode == http.StatusUnauthorized || probe.StatusCode == http.StatusForbidden {
+			detail += "，说明 backend 可达，未携带 ChatGPT 会话属预期"
+		}
+		return CheckResult{
+			Name:    name,
+			Passed:  true,
+			Problem: detail,
+		}, true
+	}
+
+	return CheckResult{
+		Name:    name,
+		Passed:  false,
+		Problem: fmt.Sprintf("HTTP %d (%s)", probe.StatusCode, probe.FinalURL),
+		Suggest: "chatgpt.com/backend-api 可达但返回异常状态，请检查当前出口、Cloudflare/WAF 或稍后重试",
+	}, false
+}
+
+func buildOpenAIHints(shellProxy, proxyAvailable, directAuthOK, proxyAuthOK, directAPIOK, proxyAPIOK, directCodexOK, proxyCodexOK bool, directCountry, directCountryCode, proxyCountry, proxyCountryCode string) []string {
 	var hints []string
 
 	if !shellProxy {
@@ -226,6 +282,9 @@ func buildOpenAIHints(shellProxy, proxyAvailable, directAuthOK, proxyAuthOK, dir
 	if proxyAvailable && directAPIOK && !proxyAPIOK {
 		hints = append(hints, "直连 api.openai.com 正常、代理路径失败，说明 token 交换或后续 API 请求经代理会被当前出口拦截。")
 	}
+	if proxyAvailable && directCodexOK && !proxyCodexOK {
+		hints = append(hints, "直连 chatgpt.com/backend-api 正常、代理路径失败，问题更像 openai-codex 专用 ChatGPT backend 被当前代理出口拦截。")
+	}
 	if directCountryCode != "" && proxyCountryCode != "" && directCountryCode != proxyCountryCode {
 		hints = append(hints, fmt.Sprintf("直连出口是 %s，代理出口是 %s；OpenAI 最终按实际发起 token 交换的出口地区做判定。", formatCountry(directCountry, directCountryCode), formatCountry(proxyCountry, proxyCountryCode)))
 	}
@@ -234,6 +293,24 @@ func buildOpenAIHints(shellProxy, proxyAvailable, directAuthOK, proxyAuthOK, dir
 	}
 
 	return hints
+}
+
+func isOpenAICodexReachableStatus(code int) bool {
+	switch code {
+	case http.StatusOK,
+		http.StatusNoContent,
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusSeeOther,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+		http.StatusUnauthorized,
+		http.StatusForbidden,
+		http.StatusNotFound:
+		return true
+	default:
+		return false
+	}
 }
 
 func extractCountry(detail string) (country string, code string) {
