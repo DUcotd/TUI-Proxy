@@ -106,7 +106,10 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 
 	// URL input
 	urlInput := textinput.New()
-	urlInput.Placeholder = "https://订阅链接 或 /path/to/sub.txt"
+	// bubbles/textinput v0.18.0 can panic when Width is set and the placeholder
+	// contains wide runes because it slices by display width instead of rune count.
+	// Keep placeholders ASCII-only until that upstream behavior is fixed.
+	urlInput.Placeholder = "https://example.com/sub or /path/to/sub.txt"
 	urlInput.SetValue(appCfg.SubscriptionURL)
 	urlInput.Focus()
 	urlInput.Width = 60

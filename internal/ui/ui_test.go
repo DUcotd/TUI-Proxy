@@ -218,6 +218,24 @@ func TestExecutionDoneMsgCarriesImportFallbackState(t *testing.T) {
 	}
 }
 
+func TestSubscriptionViewDoesNotPanicWithPlaceholder(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenSubscription
+	wizard.width = 80
+	wizard.height = 24
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("View() should not panic on subscription screen: %v", r)
+		}
+	}()
+
+	view := wizard.View()
+	if !strings.Contains(view, "https://example.com/sub or /path/to/sub.txt") {
+		t.Fatalf("subscription view missing placeholder text: %s", view)
+	}
+}
+
 func TestProtocolBadgeNormalizesCase(t *testing.T) {
 	if got := protocolBadge("vless"); !strings.Contains(got, "Vless") {
 		t.Fatalf("protocolBadge(vless) = %q", got)
