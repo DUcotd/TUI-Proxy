@@ -121,8 +121,9 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	for name, group := range groups {
-		typeIcon := groupTypeIcon(group.Type)
-		fmt.Printf("  %s %s [%s]", typeIcon, name, group.Type)
+		typ := mihomo.NormalizeProxyType(group.Type)
+		typeIcon := groupTypeIcon(typ)
+		fmt.Printf("  %s %s [%s]", typeIcon, name, typ)
 		if group.Now != "" {
 			fmt.Printf(" → %s", group.Now)
 		}
@@ -136,7 +137,7 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 }
 
 func groupTypeIcon(t string) string {
-	switch t {
+	switch mihomo.NormalizeProxyType(t) {
 	case "select":
 		return "🔀"
 	case "url-test":

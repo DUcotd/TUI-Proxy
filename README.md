@@ -61,6 +61,7 @@ sudo clashctl doctor
 
 # 命令式操作
 sudo clashctl export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
+clashctl import -f sub.txt -o config.yaml
 sudo clashctl start
 clashctl status
 clashctl nodes list
@@ -88,6 +89,7 @@ clashctl nodes use "节点名称"
 | `clashctl init` | 交互式配置向导（含节点管理） |
 | `clashctl install` | 安装 Mihomo 内核 |
 | `clashctl export` | 导出配置文件 |
+| `clashctl import` | 从本地原始订阅文件生成静态配置 |
 | `clashctl start` | 启动 Mihomo |
 | `clashctl stop` | 停止 Mihomo |
 | `clashctl restart` | 重启 Mihomo |
@@ -106,6 +108,7 @@ clashctl nodes use "节点名称"
 - Linux (systemd 发行版，Ubuntu 22.04+ / Debian 12+)
 - TUN 模式需要 root 权限
 - Mihomo 会在首次使用时自动下载，也可手动安装
+- `mixed-port` 模式只提供本地代理端口，服务器流量需要显式配置代理环境变量
 
 ## 文档
 

@@ -30,6 +30,13 @@ sudo clashctl init
 clashctl export -u <订阅URL> [-m tun|mixed] [-p 端口] [-o 输出路径]
 ```
 
+### clashctl import
+从本地原始订阅文件生成静态 Mihomo 配置，适用于服务器无法直接拉取订阅 URL 的场景。
+
+```bash
+clashctl import -f sub.txt -o config.yaml
+```
+
 ### clashctl start / stop / restart
 管理 Mihomo 服务。
 
@@ -82,3 +89,13 @@ clashctl config path    # 显示配置路径
 
 ### 订阅 URL 无法访问
 检查网络连接，确认 URL 以 http/https 开头。
+
+### 服务器能启动 Mihomo，但节点没有加载出来
+这通常说明 Controller API 已启动，但服务器无法直连订阅 URL，或订阅返回的是原始节点链接而非 YAML。
+
+可先在本地下载订阅，再执行：
+
+```bash
+base64 -d sub.txt > links.txt   # 如果文件是 base64
+clashctl import -f links.txt -o config.yaml
+```

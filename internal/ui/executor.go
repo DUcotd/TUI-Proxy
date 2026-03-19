@@ -3,12 +3,16 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"clashctl/internal/app"
 	"clashctl/internal/config"
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
+	"clashctl/internal/subscription"
 	"clashctl/internal/system"
 )
 
@@ -85,22 +89,35 @@ func (m WizardModel) executeFull() []ExecStep {
 
 	// Step 8: Verify controller API (with retry, since mihomo may need time)
 	m.stepCheckControllerWithRetry(&steps)
+	if m.controllerAvailable {
+		m.stepVerifyProxyInventory(&steps)
+	}
 
 	return steps
 }
 
 func (m WizardModel) stepCheckURL() ExecStep {
-	if err := system.CheckURLReachable(m.appCfg.SubscriptionURL, 10*time.Second); err != nil {
+	probe, err := system.ProbeURL(m.appCfg.SubscriptionURL, 10*time.Second)
+	if err != nil {
 		return ExecStep{
 			Label:   "检查订阅 URL 可达性",
 			Success: false,
-			Detail:  err.Error() + "\n(仅警告，配置仍会生成)",
+			Detail:  err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl import --file sub.txt' 生成静态配置\n(仅警告，配置仍会生成)",
 		}
+	}
+	detail := "URL 可正常访问"
+	switch probe.ContentKind {
+	case "base64-links", "raw-links":
+		detail += "\n检测到原始节点订阅（非 YAML），必要时可用 'clashctl import --file ...' 转为静态配置"
+	case "mihomo-yaml":
+		detail += "\n检测到 Mihomo/Clash YAML 内容"
+	case "html":
+		detail += "\n警告: 返回内容像 HTML 页面，请确认这是真正的订阅链接"
 	}
 	return ExecStep{
 		Label:   "检查订阅 URL 可达性",
 		Success: true,
-		Detail:  "URL 可正常访问",
+		Detail:  detail,
 	}
 }
 
@@ -401,7 +418,7 @@ func (m *WizardModel) reportControllerReady(client *mihomo.Client, steps *[]Exec
 	}
 
 	if group, err := client.GetProxyGroup("PROXY"); err == nil {
-		detail += fmt.Sprintf("\n代理组 PROXY: %d 个节点可用", len(group.All))
+		detail += fmt.Sprintf("\n代理组 PROXY: %d 个节点已加载", len(group.All))
 	}
 
 	m.controllerAvailable = true
@@ -410,4 +427,142 @@ func (m *WizardModel) reportControllerReady(client *mihomo.Client, steps *[]Exec
 		Success: true,
 		Detail:  detail,
 	})
+}
+
+func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
+	client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
+	group, err := client.GetProxyGroup("PROXY")
+	if err != nil {
+		m.controllerAvailable = false
+		*steps = append(*steps, ExecStep{
+			Label:   "验证代理节点加载",
+			Success: false,
+			Detail:  "Controller API 已启动，但无法读取 PROXY 组\n提示: 请检查配置文件中的 proxy-groups 是否包含 PROXY",
+		})
+		return
+	}
+
+	providerPath := filepath.Join(m.appCfg.ConfigDir, m.appCfg.ProviderPath)
+	providerMissing := false
+	if strings.TrimSpace(m.appCfg.SubscriptionURL) != "" {
+		if info, err := system.StatFile(providerPath); err != nil || info.Size() == 0 {
+			providerMissing = true
+		}
+	}
+
+	loaded := len(group.All)
+	onlyCompatible := loaded == 1 && (group.All[0] == "COMPATIBLE" || group.All[0] == "DIRECT")
+	if loaded == 0 || onlyCompatible || providerMissing {
+		m.controllerAvailable = false
+		detail := "Controller API 已就绪，但订阅节点未成功加载"
+		if providerMissing {
+			detail += fmt.Sprintf("\nprovider 文件不存在或为空: %s", providerPath)
+		}
+		if loaded > 0 {
+			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", group.All)
+		}
+		detail += "\n常见原因: 服务器无法直连订阅 URL、provider 拉取失败、或订阅返回的是原始节点链接"
+		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl import --file sub.txt -o config.yaml' 生成静态配置"
+		*steps = append(*steps, ExecStep{
+			Label:   "验证代理节点加载",
+			Success: false,
+			Detail:  detail,
+		})
+		return
+	}
+
+	detail := fmt.Sprintf("PROXY 已加载 %d 个节点", loaded)
+	if group.Now != "" {
+		detail += "\n当前节点: " + group.Now
+	}
+	*steps = append(*steps, ExecStep{
+		Label:   "验证代理节点加载",
+		Success: true,
+		Detail:  detail,
+	})
+}
+
+func (m WizardModel) executeImport(filePath string) []ExecStep {
+	var steps []ExecStep
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		steps = append(steps, ExecStep{
+			Label:   "读取本地订阅文件",
+			Success: false,
+			Detail:  err.Error(),
+		})
+		m.controllerAvailable = false
+		return steps
+	}
+	steps = append(steps, ExecStep{
+		Label:   "读取本地订阅文件",
+		Success: true,
+		Detail:  fmt.Sprintf("已读取 %s (%d bytes)", filePath, len(data)),
+	})
+
+	parsed, err := subscription.Parse(data)
+	if err != nil {
+		steps = append(steps, ExecStep{
+			Label:   "解析本地订阅文件",
+			Success: false,
+			Detail:  err.Error(),
+		})
+		m.controllerAvailable = false
+		return steps
+	}
+	steps = append(steps, ExecStep{
+		Label:   "解析本地订阅文件",
+		Success: true,
+		Detail:  fmt.Sprintf("检测到 %s，解析出 %d 个节点", parsed.DetectedFormat, len(parsed.Names)),
+	})
+
+	mihomoCfg := core.BuildStaticMihomoConfig(m.appCfg, parsed.Proxies, parsed.Names)
+	steps = append(steps, ExecStep{
+		Label:   "生成静态配置",
+		Success: true,
+		Detail:  "已生成不依赖订阅 URL 的 Mihomo 配置",
+	})
+
+	configPath := filepath.Join(m.appCfg.ConfigDir, "config.yaml")
+	if _, ok := m.stepRenderYAML(mihomoCfg, &steps); !ok {
+		m.controllerAvailable = false
+		return steps
+	}
+	if !m.stepWriteConfig(mihomoCfg, configPath, &steps) {
+		m.controllerAvailable = false
+		return steps
+	}
+
+	if err := app.SaveAppConfig(m.appCfg); err != nil {
+		steps = append(steps, ExecStep{
+			Label:   "保存 clashctl 配置",
+			Success: false,
+			Detail:  err.Error(),
+		})
+	} else {
+		steps = append(steps, ExecStep{
+			Label:   "保存 clashctl 配置",
+			Success: true,
+			Detail:  "已写入 ~/.config/clashctl/config.yaml\n提示: 当前使用静态导入配置，后续不会依赖服务器直连订阅 URL",
+		})
+	}
+
+	m.stepEnsureGeoData(&steps)
+	if m.appCfg.EnableSystemd {
+		binary, binaryOK := m.stepCheckBinary(&steps)
+		if !binaryOK {
+			m.controllerAvailable = false
+			return steps
+		}
+		m.stepSystemd(binary, &steps)
+	} else {
+		m.stepStartProcess(&steps)
+	}
+	m.stepCheckControllerWithRetry(&steps)
+	if m.controllerAvailable {
+		m.stepVerifyProxyInventory(&steps)
+	}
+
+	return steps
 }

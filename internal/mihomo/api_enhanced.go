@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 )
 
 // ProxyGroupDetail is the enhanced proxy group info with full node details.
@@ -55,7 +56,53 @@ func (c *Client) GetAllProxyGroups() (map[string]ProxyGroup, error) {
 		return nil, fmt.Errorf("解析 API 响应失败: %w", err)
 	}
 
-	return result.Proxies, nil
+	groups := make(map[string]ProxyGroup)
+	for name, group := range result.Proxies {
+		if !IsProxyGroupType(group.Type) {
+			continue
+		}
+		groups[name] = group
+	}
+
+	return groups, nil
+}
+
+// NormalizeProxyType maps Mihomo API type names to stable lowercase values.
+func NormalizeProxyType(t string) string {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "selector", "select":
+		return "select"
+	case "urltest", "url-test":
+		return "url-test"
+	case "fallback":
+		return "fallback"
+	case "loadbalance", "load-balance":
+		return "load-balance"
+	case "relay":
+		return "relay"
+	case "direct":
+		return "direct"
+	case "reject":
+		return "reject"
+	case "rejectdrop", "reject-drop":
+		return "reject-drop"
+	case "pass":
+		return "pass"
+	case "compatible":
+		return "compatible"
+	default:
+		return strings.ToLower(strings.TrimSpace(t))
+	}
+}
+
+// IsProxyGroupType reports whether a Mihomo proxy entry is a group rather than a single node.
+func IsProxyGroupType(t string) bool {
+	switch NormalizeProxyType(t) {
+	case "select", "url-test", "fallback", "load-balance", "relay":
+		return true
+	default:
+		return false
+	}
 }
 
 // ProxyInfo represents a single proxy with its type.

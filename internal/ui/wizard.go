@@ -34,8 +34,11 @@ type WizardModel struct {
 	advancedInputs []textinput.Model
 
 	// Result
-	execSteps []ExecStep
-	execError string
+	execSteps         []ExecStep
+	execError         string
+	canImportFallback bool
+	importHint        string
+	importInput       textinput.Model
 
 	// Controller availability (set after execution)
 	controllerAvailable bool
@@ -148,6 +151,13 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	s.Spinner = spinner.Dot
 	s.Style = SpinnerStyle
 
+	importInput := textinput.New()
+	importInput.Placeholder = "/path/to/sub.txt"
+	importInput.Width = 60
+	importInput.Prompt = "› "
+	importInput.PromptStyle = InputStyle
+	importInput.TextStyle = InputStyle
+
 	return WizardModel{
 		screen:         ScreenWelcome,
 		appCfg:         appCfg,
@@ -156,6 +166,7 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 		advancedFields: fields,
 		advancedInputs: advInputs,
 		spinner:        s,
+		importInput:    importInput,
 	}
 }
 
@@ -240,6 +251,8 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ScreenResult:
 		return m.updateResult(msg)
+	case ScreenImportLocal:
+		return m.updateImportLocal(msg)
 	case ScreenGroupSelect:
 		return m.updateGroupSelect(msg)
 	case ScreenNodeSelect:
@@ -373,13 +386,30 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m WizardModel) runExecution() tea.Cmd {
 	return func() tea.Msg {
 		steps := m.executeFull()
-		// Check if controller is available by looking at the last step
-		controllerReady := false
-		if len(steps) > 0 {
-			last := steps[len(steps)-1]
-			controllerReady = last.Success && last.Label == "检查 Controller API"
-		}
+		m.detectImportFallback(steps)
+		controllerReady := m.controllerAvailable
 		return executionDoneMsg{steps: steps, controllerReady: controllerReady}
+	}
+}
+
+func (m WizardModel) runImportExecution(filePath string) tea.Cmd {
+	return func() tea.Msg {
+		steps := m.executeImport(filePath)
+		m.detectImportFallback(steps)
+		controllerReady := m.controllerAvailable
+		return executionDoneMsg{steps: steps, controllerReady: controllerReady}
+	}
+}
+
+func (m *WizardModel) detectImportFallback(steps []ExecStep) {
+	m.canImportFallback = false
+	m.importHint = ""
+	for _, step := range steps {
+		if step.Label == "验证代理节点加载" && !step.Success {
+			m.canImportFallback = true
+			m.importHint = step.Detail
+			return
+		}
 	}
 }
 
@@ -395,6 +425,12 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.quitting = true
 		return m, tea.Quit
+	case "i":
+		if m.canImportFallback {
+			m.importInput.Focus()
+			m.screen = ScreenImportLocal
+			return m, nil
+		}
 	case "esc":
 		m.quitting = true
 		return m, tea.Quit
@@ -407,6 +443,27 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		path := strings.TrimSpace(m.importInput.Value())
+		if path == "" {
+			return m, nil
+		}
+		m.screen = ScreenExecution
+		m.importInput.Blur()
+		return m, tea.Batch(m.spinner.Tick, m.runImportExecution(path))
+	case "esc":
+		m.importInput.Blur()
+		m.screen = ScreenResult
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.importInput, cmd = m.importInput.Update(msg)
+		return m, cmd
+	}
 }
 
 func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -704,6 +761,8 @@ func (m WizardModel) View() string {
 		b.WriteString(m.viewExecution())
 	case ScreenResult:
 		b.WriteString(m.viewResult())
+	case ScreenImportLocal:
+		b.WriteString(m.viewImportLocal())
 	case ScreenGroupSelect:
 		b.WriteString(m.viewGroupSelect())
 	case ScreenNodeSelect:

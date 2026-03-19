@@ -77,19 +77,24 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if err == nil && len(groups) > 0 {
 			fmt.Println("\n  ── 代理组 ──")
 			for name, group := range groups {
-				// Only show select-type groups (the ones users care about)
-				if group.Type != "select" && group.Type != "url-test" {
-					continue
-				}
+				typ := mihomo.NormalizeProxyType(group.Type)
 				marker := "  "
 				if group.Now != "" {
 					marker = "▸ "
 				}
-				fmt.Printf("\n  %s%s [%s]\n", marker, name, group.Type)
+				fmt.Printf("\n  %s%s [%s]\n", marker, name, typ)
 				if group.Now != "" {
 					fmt.Printf("     当前: %s\n", group.Now)
 				}
 				fmt.Printf("     节点数: %d\n", len(group.All))
+			}
+
+			if proxy, err := client.GetProxyGroup("PROXY"); err == nil {
+				if len(proxy.All) == 1 && proxy.All[0] == "COMPATIBLE" {
+					fmt.Println("\n  ⚠ 订阅节点未成功加载；当前仅剩 COMPATIBLE。")
+					fmt.Println("    常见原因: 服务器无法直连订阅 URL，或 provider 拉取失败。")
+					fmt.Println("    可改用 'clashctl import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
+				}
 			}
 		}
 	}

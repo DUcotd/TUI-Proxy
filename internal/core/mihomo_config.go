@@ -8,7 +8,8 @@ type MihomoConfig struct {
 	Mode               string                    `yaml:"mode"`
 	LogLevel           string                    `yaml:"log-level"`
 	ExternalController string                    `yaml:"external-controller"`
-	ProxyProviders     map[string]*ProxyProvider `yaml:"proxy-providers"`
+	Proxies            []map[string]any          `yaml:"proxies,omitempty"`
+	ProxyProviders     map[string]*ProxyProvider `yaml:"proxy-providers,omitempty"`
 	ProxyGroups        []*ProxyGroup             `yaml:"proxy-groups"`
 	DNS                *DNSConfig                `yaml:"dns,omitempty"`
 	TUN                *TUNConfig                `yaml:"tun,omitempty"`
@@ -43,6 +44,7 @@ type ProxyGroup struct {
 	Type     string   `yaml:"type" json:"type"`
 	Now      string   `yaml:"now,omitempty" json:"now,omitempty"`
 	All      []string `yaml:"all,omitempty" json:"all,omitempty"`
+	Proxies  []string `yaml:"proxies,omitempty" json:"proxies,omitempty"`
 	Use      []string `yaml:"use,omitempty" json:"use,omitempty"`
 	URL      string   `yaml:"url,omitempty" json:"url,omitempty"`
 	Interval int      `yaml:"interval,omitempty" json:"interval,omitempty"`

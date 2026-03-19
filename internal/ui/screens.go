@@ -142,11 +142,26 @@ func (m WizardModel) viewResult() string {
 		content += "\n" + InfoStyle.Render("Controller API 可用，可以管理节点。") + "\n"
 		content += HelpStyle.Render("按 Enter/n 进入节点管理 │ 按 Esc 退出")
 	} else {
+		if m.canImportFallback {
+			content += "\n" + WarningStyle.Render("检测到订阅未成功加载，可切换为本地导入。") + "\n"
+			content += InfoStyle.Render("先在本地下载/解码订阅文件，再在下一步输入文件路径。") + "\n"
+			content += HelpStyle.Render("按 i 导入本地订阅文件 │ 按 Enter/Esc 退出")
+			return BoxStyle.Render(content)
+		}
 		content += "\n" + InfoStyle.Render("使用 'clashctl start' 启动服务") + "\n"
 		content += InfoStyle.Render("使用 'clashctl doctor' 检查环境") + "\n"
 		content += HelpStyle.Render("按 Enter 退出")
 	}
 
+	return BoxStyle.Render(content)
+}
+
+func (m WizardModel) viewImportLocal() string {
+	content := HeaderStyle.Render("导入本地订阅文件") + "\n\n"
+	content += InfoStyle.Render("检测到服务器无法成功拉取订阅，建议改用本地导入。") + "\n"
+	content += InfoStyle.Render("支持两类文件：base64 原始订阅，或解码后的 vless:// / trojan:// / hysteria2:// 链接列表。") + "\n\n"
+	content += TextStyle.Render("文件路径: ") + m.importInput.View() + "\n\n"
+	content += HelpStyle.Render("Enter 开始导入 │ Esc 返回结果页")
 	return BoxStyle.Render(content)
 }
 
@@ -295,7 +310,7 @@ func delayStyle(delay int) lipgloss.Style {
 }
 
 func groupIcon(t string) string {
-	switch t {
+	switch mihomo.NormalizeProxyType(t) {
 	case "select":
 		return "🔀"
 	case "url-test":

@@ -12,6 +12,7 @@ const (
 	ScreenPreview
 	ScreenExecution // 正在执行配置
 	ScreenResult
+	ScreenImportLocal // 本地订阅导入
 	ScreenGroupSelect // 选择代理组
 	ScreenNodeSelect  // 选择节点
 	ScreenDone
@@ -34,6 +35,8 @@ func (s Screen) StepLabel() string {
 		return "步骤 5/8: 正在配置..."
 	case ScreenResult:
 		return "步骤 6/8: 执行结果"
+	case ScreenImportLocal:
+		return "步骤 6/8: 导入本地订阅"
 	case ScreenGroupSelect:
 		return "步骤 7/8: 选择代理组"
 	case ScreenNodeSelect:
