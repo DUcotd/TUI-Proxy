@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -70,6 +72,78 @@ func TestFindBinary(t *testing.T) {
 	_, err := FindBinary()
 	// We don't assert on the result since it depends on the system
 	_ = err
+}
+
+func TestFindBinarySkipsBrokenCandidate(t *testing.T) {
+	tmp := t.TempDir()
+	badPath := filepath.Join(tmp, "mihomo")
+	goodPath := filepath.Join(tmp, "clash-meta")
+
+	writeExecutable(t, badPath, "#!/bin/sh\nexit 139\n")
+	writeExecutable(t, goodPath, "#!/bin/sh\nif [ \"$1\" = \"-v\" ]; then\n  echo 'Mihomo Meta v1.2.3'\n  exit 0\nfi\necho 'usage'\nexit 0\n")
+
+	oldPath := os.Getenv("PATH")
+	t.Setenv("PATH", tmp)
+	oldInstall := installedBinaryPath
+	installedBinaryPath = filepath.Join(tmp, "missing-install")
+	t.Cleanup(func() {
+		installedBinaryPath = oldInstall
+		t.Setenv("PATH", oldPath)
+	})
+
+	got, err := FindBinary()
+	if err != nil {
+		t.Fatalf("FindBinary() error: %v", err)
+	}
+	if got != goodPath {
+		t.Fatalf("FindBinary() = %q, want %q", got, goodPath)
+	}
+}
+
+func TestValidateBinaryRejectsSilentOrBrokenBinary(t *testing.T) {
+	tmp := t.TempDir()
+	broken := filepath.Join(tmp, "mihomo-broken")
+	silent := filepath.Join(tmp, "mihomo-silent")
+	good := filepath.Join(tmp, "mihomo-good")
+
+	writeExecutable(t, broken, "#!/bin/sh\nexit 139\n")
+	writeExecutable(t, silent, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, good, "#!/bin/sh\nif [ \"$1\" = \"-v\" ]; then\n  echo 'Mihomo Meta v9.9.9'\n  exit 0\nfi\necho 'usage'\nexit 0\n")
+
+	if _, err := validateBinary(broken); err == nil {
+		t.Fatal("validateBinary() should reject broken binary")
+	}
+	if _, err := validateBinary(silent); err == nil {
+		t.Fatal("validateBinary() should reject silent binary")
+	}
+	version, err := validateBinary(good)
+	if err != nil {
+		t.Fatalf("validateBinary() error: %v", err)
+	}
+	if version != "Mihomo Meta v9.9.9" {
+		t.Fatalf("validateBinary() = %q", version)
+	}
+}
+
+func TestActivateBinaryRollsBackOnInvalidInstall(t *testing.T) {
+	tmp := t.TempDir()
+	dest := filepath.Join(tmp, "mihomo")
+	bad := filepath.Join(tmp, "mihomo.bad")
+
+	writeExecutable(t, dest, "#!/bin/sh\necho 'Mihomo Meta v1.0.0'\n")
+	writeExecutable(t, bad, "#!/bin/sh\nexit 139\n")
+
+	if err := activateBinary(bad, dest); err == nil {
+		t.Fatal("activateBinary() should fail for invalid replacement")
+	}
+
+	version, err := validateBinary(dest)
+	if err != nil {
+		t.Fatalf("validateBinary(dest) error after rollback: %v", err)
+	}
+	if version != "Mihomo Meta v1.0.0" {
+		t.Fatalf("restored binary version = %q", version)
+	}
 }
 
 func TestNewClient(t *testing.T) {
@@ -171,4 +245,11 @@ func TestCheckTUNPermission(t *testing.T) {
 func TestCanUseTUN(t *testing.T) {
 	// Just ensure it doesn't panic - result depends on system
 	_ = CanUseTUN()
+}
+
+func writeExecutable(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0755); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", path, err)
+	}
 }

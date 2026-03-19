@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -65,29 +66,81 @@ func InstallMihomo() (string, error) {
 
 	fmt.Printf("   下载中: %s\n", downloadURL)
 
+	tmpPath := installedBinaryPath + ".download"
+	if err := os.RemoveAll(tmpPath); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("清理旧临时文件失败: %w", err)
+	}
+
 	if isGz {
-		if err := downloadAndDecompressGz(downloadURL, InstallPath); err != nil {
+		if err := downloadAndDecompressGz(downloadURL, tmpPath); err != nil {
 			return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	} else {
-		if err := downloadBinary(downloadURL, InstallPath); err != nil {
+		if err := downloadBinary(downloadURL, tmpPath); err != nil {
 			return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	}
+	defer os.Remove(tmpPath)
 
-	if err := os.Chmod(InstallPath, 0755); err != nil {
+	if err := os.Chmod(tmpPath, 0755); err != nil {
 		return "", fmt.Errorf("设置执行权限失败: %w", err)
 	}
 
-	fmt.Printf("✅ Mihomo 已安装到: %s\n", InstallPath)
+	version, err := validateBinary(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("下载的 Mihomo 二进制不可用: %w", err)
+	}
 
-	// Verify
-	version, _ := GetBinaryVersion()
+	if err := activateBinary(tmpPath, installedBinaryPath); err != nil {
+		return "", err
+	}
+
+	fmt.Printf("✅ Mihomo 已安装到: %s\n", installedBinaryPath)
+
 	if version != "" {
 		fmt.Printf("   版本: %s\n", version)
 	}
 
-	return InstallPath, nil
+	return installedBinaryPath, nil
+}
+
+func activateBinary(srcPath, destPath string) error {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("创建安装目录失败: %w", err)
+	}
+
+	backupPath := destPath + ".bak"
+	if err := os.RemoveAll(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("清理旧备份失败: %w", err)
+	}
+
+	hadExisting := false
+	if _, err := os.Stat(destPath); err == nil {
+		hadExisting = true
+		if err := os.Rename(destPath, backupPath); err != nil {
+			return fmt.Errorf("备份现有 Mihomo 失败: %w", err)
+		}
+	}
+
+	if err := os.Rename(srcPath, destPath); err != nil {
+		if hadExisting {
+			_ = os.Rename(backupPath, destPath)
+		}
+		return fmt.Errorf("写入 Mihomo 二进制失败: %w", err)
+	}
+
+	if _, err := validateBinary(destPath); err != nil {
+		_ = os.Remove(destPath)
+		if hadExisting {
+			_ = os.Rename(backupPath, destPath)
+		}
+		return fmt.Errorf("安装后的 Mihomo 二进制校验失败: %w", err)
+	}
+
+	if hadExisting {
+		_ = os.Remove(backupPath)
+	}
+	return nil
 }
 
 // fetchLatestMihomoRelease gets the latest release info from GitHub API.

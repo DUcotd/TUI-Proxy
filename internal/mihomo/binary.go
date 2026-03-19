@@ -1,0 +1,113 @@
+package mihomo
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+var (
+	binaryCandidateNames = []string{"mihomo", "clash-meta", "clash"}
+	installedBinaryPath  = InstallPath
+)
+
+// FindBinary locates a healthy Mihomo binary in PATH or at the default install location.
+func FindBinary() (string, error) {
+	var invalid []string
+
+	for _, name := range binaryCandidateNames {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+
+		if _, err := validateBinary(path); err == nil {
+			return path, nil
+		} else {
+			invalid = append(invalid, fmt.Sprintf("%s (%v)", path, err))
+		}
+	}
+
+	if info, err := os.Stat(installedBinaryPath); err == nil && !info.IsDir() {
+		if _, err := validateBinary(installedBinaryPath); err == nil {
+			return installedBinaryPath, nil
+		} else {
+			invalid = append(invalid, fmt.Sprintf("%s (%v)", installedBinaryPath, err))
+		}
+	}
+
+	if len(invalid) > 0 {
+		return "", fmt.Errorf("未找到可用的 mihomo 可执行文件；已跳过异常候选: %s", strings.Join(invalid, "; "))
+	}
+
+	return "", fmt.Errorf("未找到 mihomo 可执行文件。请先安装 Mihomo 并确保其在 PATH 中")
+}
+
+// GetBinaryVersion returns the version string of the mihomo binary.
+func GetBinaryVersion() (string, error) {
+	binary, err := FindBinary()
+	if err != nil {
+		return "", err
+	}
+
+	version, err := validateBinary(binary)
+	if err != nil {
+		return "", fmt.Errorf("获取版本号失败: %w", err)
+	}
+
+	return version, nil
+}
+
+func validateBinary(path string) (string, error) {
+	version, err := runBinaryCheck(path, "-v")
+	if err == nil && version != "" {
+		return version, nil
+	}
+
+	help, helpErr := runBinaryCheck(path, "-h")
+	if helpErr == nil {
+		if version != "" {
+			return version, nil
+		}
+		return firstLine(help), nil
+	}
+
+	if err != nil {
+		return "", err
+	}
+	return "", helpErr
+}
+
+func runBinaryCheck(path string, arg string) (string, error) {
+	cmd := exec.Command(path, arg)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(output))
+		if text == "" {
+			text = err.Error()
+		}
+		return "", fmt.Errorf("%s %s 失败: %s", path, arg, text)
+	}
+
+	text := strings.TrimSpace(string(output))
+	if text == "" {
+		return "", fmt.Errorf("%s %s 没有输出", path, arg)
+	}
+
+	return firstLine(text), nil
+}
+
+func firstLine(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if idx := strings.IndexByte(text, '\n'); idx >= 0 {
+		text = text[:idx]
+	}
+	if len(text) > 200 {
+		text = text[:200]
+	}
+	return text
+}
