@@ -29,7 +29,7 @@ var exportCmd = &cobra.Command{
 
 func init() {
 	exportCmd.Flags().StringVarP(&exportSubURL, "url", "u", "", "订阅 URL（必填）")
-	exportCmd.Flags().StringVarP(&exportMode, "mode", "m", "tun", "运行模式: tun 或 mixed")
+	exportCmd.Flags().StringVarP(&exportMode, "mode", "m", "mixed", "运行模式: tun 或 mixed")
 	exportCmd.Flags().IntVarP(&exportMixedPort, "port", "p", 7890, "mixed-port 值")
 	exportCmd.Flags().StringVarP(&exportOutput, "output", "o", "config.yaml", "输出文件路径")
 	exportCmd.MarkFlagRequired("url")

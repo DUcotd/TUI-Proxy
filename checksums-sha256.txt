@@ -1,3 +1,0 @@
-7a06667ee2db8203c4bcef6af13210c304efcee4336de3ebe51776ce1c72b0c0  clashctl-linux-amd64
-459f2b9bc1af7bfdf50a63fe0694d11a0a6e20f6dae44f28a66f5ced112b6fc2  clashctl-linux-arm
-f2331848154150d470a4efb90e43cdd3f90fe15434ee479ddc24eb116097f40a  clashctl-linux-arm64

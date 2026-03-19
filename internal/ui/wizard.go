@@ -14,14 +14,6 @@ import (
 	"clashctl/internal/mihomo"
 )
 
-// boolToInt converts a bool to int (false=0, true=1).
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // WizardModel is the main TUI state.
 type WizardModel struct {
 	screen    Screen

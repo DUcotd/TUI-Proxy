@@ -22,3 +22,6 @@ Thumbs.db
 *.yaml
 !assets/*.tpl
 clashctl
+
+# Build artifacts
+checksums-sha256.txt

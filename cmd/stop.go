@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -23,7 +24,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 
 	// Try systemd first
 	if mihomo.HasSystemd() {
-		if err := mihomo.StopService("clashctl-mihomo"); err == nil {
+		if err := mihomo.StopService(core.DefaultServiceName); err == nil {
 			fmt.Println("✅ 已通过 systemd 停止")
 			return nil
 		}

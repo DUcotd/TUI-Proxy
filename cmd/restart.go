@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -21,7 +22,7 @@ func init() {
 func runRestart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🔄 正在重启 Mihomo...")
 
-	if err := mihomo.RestartService("clashctl-mihomo"); err != nil {
+	if err := mihomo.RestartService(core.DefaultServiceName); err != nil {
 		return fmt.Errorf("重启失败: %w", err)
 	}
 

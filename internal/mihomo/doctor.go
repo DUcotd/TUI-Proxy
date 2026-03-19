@@ -33,32 +33,32 @@ func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
 		results = append(results, checkTUNDevice())
 	}
 
-	// 3b. Check iptables (required for TUN mode auto-route)
+	// 4. Check iptables (required for TUN mode auto-route)
 	if tunMode {
 		results = append(results, checkIptables())
 	}
 
-	// 4. Check root privilege (for TUN mode)
+	// 5. Check root privilege (for TUN mode)
 	if tunMode {
 		results = append(results, checkRootPrivilege())
 	}
 
-	// 5. Check controller port
+	// 6. Check controller port
 	results = append(results, checkControllerPort(controllerAddr))
 
-	// 6. Check systemd availability
+	// 7. Check systemd availability
 	results = append(results, checkSystemd())
 
-	// 7. Check disk space
+	// 8. Check disk space
 	results = append(results, checkDiskSpace(configDir))
 
-	// 8. Check DNS resolution
+	// 9. Check DNS resolution
 	results = append(results, checkDNS())
 
-	// 9. Check if mihomo is running (process check)
+	// 10. Check if mihomo is running (process check)
 	results = append(results, checkMihomoRunning(controllerAddr))
 
-	// 10. Check geodata files (needed for GEOIP/GEOSITE rules)
+	// 11. Check geodata files (needed for GEOIP/GEOSITE rules)
 	results = append(results, checkGeoData(configDir))
 
 	return results

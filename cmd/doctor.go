@@ -19,7 +19,7 @@ var doctorCmd = &cobra.Command{
 }
 
 func init() {
-	doctorCmd.Flags().BoolVar(&doctorTunMode, "tun", true, "是否检查 TUN 模式相关条件")
+	doctorCmd.Flags().BoolVar(&doctorTunMode, "tun", false, "是否检查 TUN 模式相关条件")
 	rootCmd.AddCommand(doctorCmd)
 }
 

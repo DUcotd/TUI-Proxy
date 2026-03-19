@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"time"
 
@@ -175,12 +174,4 @@ func downloadFile(url, destPath string) error {
 
 	_, err = io.Copy(out, resp.Body)
 	return err
-}
-
-// RunSelfUpdate runs update via exec (for use after download).
-func RunSelfUpdate() error {
-	cmd := exec.Command(os.Args[0], "update")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

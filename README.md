@@ -1,6 +1,6 @@
 # clashctl
 
-Mihomo TUN 交互式 CLI 配置工具 — 输入订阅 URL，一键配置代理。
+Mihomo 交互式 CLI 配置工具 — 输入订阅 URL，一键配置代理。
 
 ## 功能
 
