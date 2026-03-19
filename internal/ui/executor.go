@@ -141,7 +141,7 @@ func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
 		return nil, false
 	}
 
-	body, probe, err := system.FetchURLContent(m.appCfg.SubscriptionURL, 15*time.Second, 20*1024*1024)
+	prepared, err := system.PrepareSubscriptionURL(m.appCfg.SubscriptionURL, 15*time.Second)
 	if err != nil {
 		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl import --file sub.txt --apply --start'"
 		if mihomo.IsMihomoRunningAt(m.appCfg.ControllerAddr) {
@@ -150,10 +150,18 @@ func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
 		*steps = append(*steps, ExecStep{Label: "获取订阅内容", Success: false, Detail: detail})
 		return nil, false
 	}
+	body := prepared.Body
+	probe := &system.URLProbeResult{
+		ContentKind: system.ProbeContentKind(body),
+		UsedProxy:   system.HasProxyEnvForDisplay(),
+	}
 
-	detail := fmt.Sprintf("已下载订阅内容 (%s)", probe.ContentKind)
+	detail := fmt.Sprintf("已通过订阅脚本下载内容 (%s)", probe.ContentKind)
 	if probe.UsedProxy {
-		detail += "\n已忽略当前 shell 中的代理环境变量，直接探测订阅地址"
+		detail += "\n已忽略当前 shell 中的代理环境变量，直接下载订阅地址"
+	}
+	if prepared.FetchDetail != "" {
+		detail += "\n" + prepared.FetchDetail
 	}
 	*steps = append(*steps, ExecStep{
 		Label:   "获取订阅内容",

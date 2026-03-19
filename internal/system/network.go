@@ -113,6 +113,11 @@ func hasProxyEnv() bool {
 	return false
 }
 
+// HasProxyEnvForDisplay reports whether the current shell exports proxy variables.
+func HasProxyEnvForDisplay() bool {
+	return hasProxyEnv()
+}
+
 // StripProxyEnv removes proxy-related variables from an environment list.
 func StripProxyEnv(env []string) []string {
 	blocked := map[string]struct{}{
@@ -173,6 +178,11 @@ func classifyBody(body []byte) string {
 		return "base64-links"
 	}
 	return "unknown"
+}
+
+// ProbeContentKind classifies fetched subscription content.
+func ProbeContentKind(body []byte) string {
+	return classifyBody(body)
 }
 
 func looksLikeRawLinks(text string) bool {
