@@ -11,10 +11,20 @@ import (
 	"clashctl/internal/core"
 )
 
+const (
+	// StartupWait is the time to wait after starting before checking if process is alive.
+	StartupWait = 500 * time.Millisecond
+	// ShutdownTimeout is the maximum time to wait for graceful shutdown.
+	ShutdownTimeout = 5 * time.Second
+	// KillWait is the time to wait after killing processes.
+	KillWait = 1 * time.Second
+)
+
 // Process manages a Mihomo child process.
 type Process struct {
 	ConfigDir string
 	cmd       *exec.Cmd
+	devNull   *os.File
 }
 
 // NewProcess creates a new Process manager.
@@ -33,10 +43,8 @@ func (p *Process) Start() error {
 
 	p.cmd = exec.Command(binary, "-d", p.ConfigDir)
 
-	// Redirect to /dev/null so process doesn't hold terminal.
-	// NOTE: devNull is intentionally not closed — the background child process
-	// needs these FDs open for its entire lifetime. Closing after Start() would
-	// cause write errors in the child.
+	// Open /dev/null for redirecting child process output.
+	// After Start(), we close the parent's copy — the child inherits its own FD via fork.
 	devNull, devErr := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if devErr != nil {
 		p.cmd.Stdout = nil
@@ -64,20 +72,20 @@ func (p *Process) Start() error {
 		return fmt.Errorf("启动 Mihomo 失败: %w", err)
 	}
 
+	// Close parent's copy of devNull — child has its own FD via fork.
+	// This prevents FD leak on repeated start/stop cycles.
+	if devErr == nil {
+		devNull.Close()
+	}
+
 	// Give it a moment to start up
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(StartupWait)
 
 	// Check if it actually started (use process.Signal(0) which still works)
 	if p.cmd.Process == nil {
-		if devErr == nil {
-			devNull.Close()
-		}
 		return fmt.Errorf("Mihomo 进程启动后立即退出")
 	}
 	if err := p.cmd.Process.Signal(syscall.Signal(0)); err != nil {
-		if devErr == nil {
-			devNull.Close()
-		}
 		return fmt.Errorf("Mihomo 进程启动后立即退出: %w", err)
 	}
 
@@ -95,17 +103,23 @@ func (p *Process) Stop() error {
 		return p.cmd.Process.Kill()
 	}
 
-	// Wait up to 5 seconds for graceful exit
+	// Wait up to ShutdownTimeout for graceful exit
 	done := make(chan error, 1)
 	go func() {
 		done <- p.cmd.Wait()
 	}()
 
 	select {
-	case <-done:
+	case err := <-done:
+		return err
+	case <-time.After(ShutdownTimeout):
+		// Force kill if graceful shutdown timed out
+		if err := p.cmd.Process.Kill(); err != nil {
+			return err
+		}
+		// Wait for Wait goroutine to complete after kill
+		<-done
 		return nil
-	case <-time.After(5 * time.Second):
-		return p.cmd.Process.Kill()
 	}
 }
 
@@ -143,7 +157,7 @@ func KillExistingMihomo() bool {
 		return false
 	}
 	// Give processes time to die and release ports
-	time.Sleep(1 * time.Second)
+	time.Sleep(KillWait)
 	return true
 }
 

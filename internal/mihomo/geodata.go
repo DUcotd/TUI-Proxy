@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+const (
+	// GeoDataDownloadTimeout is the timeout for downloading geodata files.
+	GeoDataDownloadTimeout = 60 * time.Second
+	// GeoDataMaxSize is the maximum size for geodata files (50MB).
+	GeoDataMaxSize = 50 * 1024 * 1024
+)
+
 // GeoDataFile describes a geodata file to download.
 type GeoDataFile struct {
 	Name     string // e.g. "geosite.dat"
@@ -50,7 +57,7 @@ func GeoDataURLMirror2(filename string) string {
 // EnsureGeoData downloads missing geodata files to configDir.
 // Returns the number of files downloaded and any error.
 func EnsureGeoData(configDir string) (downloaded int, err error) {
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: GeoDataDownloadTimeout}
 
 	for _, f := range DefaultGeoDataFiles() {
 		destPath := filepath.Join(configDir, f.Name)
@@ -132,7 +139,7 @@ func downloadGeoFile(client *http.Client, url, destPath string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, reader)
+	_, err = io.Copy(out, io.LimitReader(reader, GeoDataMaxSize))
 	return err
 }
 

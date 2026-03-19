@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+const (
+	// APITimeout is the timeout for controller API requests.
+	APITimeout = 5 * time.Second
+	// APIResponseMaxSize is the maximum size for API error responses (1MB).
+	APIResponseMaxSize = 1024 * 1024
+)
+
 // Client communicates with the Mihomo controller REST API.
 type Client struct {
 	BaseURL string
@@ -20,20 +27,17 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
-		HTTP:    &http.Client{Timeout: 5 * time.Second},
+		HTTP:    &http.Client{Timeout: APITimeout},
 	}
 }
 
 // ProxyGroup represents a proxy group from the controller API.
 type ProxyGroup struct {
-	Name    string   `json:"name"`
-	Type    string   `json:"type"`
-	Now     string   `json:"now"`
-	All     []string `json:"all"`
-	History []struct {
-		Time  string  `json:"time"`
-		Delay int     `json:"delay"`
-	} `json:"history"`
+	Name    string    `json:"name"`
+	Type    string    `json:"type"`
+	Now     string    `json:"now"`
+	All     []string  `json:"all"`
+	History []History `json:"history"`
 }
 
 // GetProxyGroup fetches details of a specific proxy group.
@@ -46,7 +50,7 @@ func (c *Client) GetProxyGroup(name string) (*ProxyGroup, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, APIResponseMaxSize))
 		return nil, fmt.Errorf("controller API 返回 %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -61,7 +65,10 @@ func (c *Client) GetProxyGroup(name string) (*ProxyGroup, error) {
 func (c *Client) SwitchProxy(groupName, nodeName string) error {
 	url := fmt.Sprintf("%s/proxies/%s", c.BaseURL, groupName)
 	body := map[string]string{"name": nodeName}
-	jsonBody, _ := json.Marshal(body)
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("序列化请求失败: %w", err)
+	}
 
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -76,7 +83,7 @@ func (c *Client) SwitchProxy(groupName, nodeName string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, APIResponseMaxSize))
 		return fmt.Errorf("切换节点失败 (HTTP %d): %s", resp.StatusCode, string(respBody))
 	}
 	return nil

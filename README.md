@@ -8,7 +8,7 @@ Mihomo 交互式 CLI 配置工具 — 输入订阅 URL，一键配置代理。
 - 📡 **自动下载 Mihomo** — 内核自动安装，无需手动下载
 - 🔀 TUN 模式 / mixed-port 模式
 - ⚡ 一键启动 / 停止 / 重启 Mihomo
-- 🔍 环境自检（9项检查）
+- 🔍 环境自检（11项检查）
 - 📡 **节点管理**（延迟测试 / 切换 / 刷新）
 - 🔧 systemd 服务集成
 - 🔄 自动更新
@@ -92,7 +92,7 @@ clashctl nodes use "节点名称"
 | `clashctl stop` | 停止 Mihomo |
 | `clashctl restart` | 重启 Mihomo |
 | `clashctl status` | 查看运行状态 |
-| `clashctl doctor` | 环境自检（9项） |
+| `clashctl doctor` | 环境自检（11项） |
 | `clashctl nodes list` | 列出代理节点 |
 | `clashctl nodes use` | 切换代理节点 |
 | `clashctl nodes groups` | 列出代理组 |

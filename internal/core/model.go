@@ -18,10 +18,10 @@ type AppConfig struct {
 func DefaultAppConfig() *AppConfig {
 	return &AppConfig{
 		Mode:              "mixed",
-		ConfigDir:         "/etc/mihomo",
-		ControllerAddr:    "127.0.0.1:9090",
-		MixedPort:         7890,
-		ProviderPath:      "./providers/airport.yaml",
+		ConfigDir:         DefaultConfigDir,
+		ControllerAddr:    DefaultControllerAddr,
+		MixedPort:         DefaultMixedPort,
+		ProviderPath:      DefaultProviderPath,
 		EnableHealthCheck: true,
 		EnableSystemd:     true,
 		AutoStart:         true,

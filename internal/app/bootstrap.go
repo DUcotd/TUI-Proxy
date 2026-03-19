@@ -88,7 +88,7 @@ func SaveAppConfig(cfg *core.AppConfig) error {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
 

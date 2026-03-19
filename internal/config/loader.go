@@ -25,7 +25,7 @@ func BackupFile(path string) (string, error) {
 		return "", fmt.Errorf("读取 %s 备份失败: %w", path, err)
 	}
 
-	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+	if err := os.WriteFile(backupPath, data, 0600); err != nil {
 		return "", fmt.Errorf("写入备份到 %s 失败: %w", backupPath, err)
 	}
 
@@ -39,7 +39,7 @@ func WriteConfig(path string, data []byte) error {
 		return fmt.Errorf("创建目录 %s 失败: %w", dir, err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("写入配置到 %s 失败: %w", path, err)
 	}
 
@@ -75,10 +75,10 @@ func NewLoader(path string) *Loader {
 func (l *Loader) Load(dest any) error {
 	data, err := os.ReadFile(l.Path)
 	if err != nil {
-		return fmt.Errorf("failed to read config from %s: %w", l.Path, err)
+		return fmt.Errorf("读取配置文件 %s 失败: %w", l.Path, err)
 	}
 	if err := yaml.Unmarshal(data, dest); err != nil {
-		return fmt.Errorf("failed to parse YAML from %s: %w", l.Path, err)
+		return fmt.Errorf("解析 YAML 文件 %s 失败: %w", l.Path, err)
 	}
 	return nil
 }

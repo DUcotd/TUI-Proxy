@@ -23,7 +23,6 @@ func (m WizardModel) executeFull() []ExecStep {
 	if !binaryOK {
 		return steps
 	}
-	_ = binary
 
 	// Step 3: Build config
 	mihomoCfg, ok := m.stepBuildConfig(&steps)
@@ -241,16 +240,10 @@ func (m WizardModel) stepEnsureGeoData(steps *[]ExecStep) {
 		return
 	}
 
-	*steps = append(*steps, ExecStep{
-		Label:   "下载 GeoSite/GeoIP 数据",
-		Success: true,
-		Detail:  "首次运行，正在下载必要数据文件...",
-	})
-
 	downloaded, err := mihomo.EnsureGeoData(configDir)
 	if err != nil {
 		*steps = append(*steps, ExecStep{
-			Label:   "下载 GeoSite/GeoIP 数据",
+			Label:   "GeoSite/GeoIP 数据",
 			Success: false,
 			Detail:  err.Error() + "\nMihomo 启动时会自动重试下载",
 		})
@@ -259,7 +252,7 @@ func (m WizardModel) stepEnsureGeoData(steps *[]ExecStep) {
 
 	if downloaded > 0 {
 		*steps = append(*steps, ExecStep{
-			Label:   "下载 GeoSite/GeoIP 数据",
+			Label:   "GeoSite/GeoIP 数据",
 			Success: true,
 			Detail:  fmt.Sprintf("已下载 %d 个数据文件到 %s", downloaded, configDir),
 		})

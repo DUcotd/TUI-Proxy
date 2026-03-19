@@ -96,11 +96,11 @@ func (c *Client) GetProxyGroupDetail(name string) (*ProxyGroupDetail, error) {
 	}
 
 	detail := &ProxyGroupDetail{
-		Name:    group.Name,
-		Type:    group.Type,
-		Now:     group.Now,
-		All:     group.All,
-		Nodes:   make([]ProxyNode, 0, len(group.All)),
+		Name:  group.Name,
+		Type:  group.Type,
+		Now:   group.Now,
+		All:   group.All,
+		Nodes: make([]ProxyNode, 0, len(group.All)),
 	}
 
 	// Copy history from the API response
@@ -129,7 +129,7 @@ func (c *Client) GetProxyGroupDetail(name string) (*ProxyGroupDetail, error) {
 func (d *ProxyGroupDetail) SortNodesByDelay() {
 	sort.Slice(d.Nodes, func(i, j int) bool {
 		ai, aj := d.Nodes[i].Delay, d.Nodes[j].Delay
-		// 0 = unknown, -1 = timeout; both go to the end
+		// 0 = unknown, -1 = timeout; both sorted last, unknown before timeout
 		if ai <= 0 && aj <= 0 {
 			return ai > aj // unknown (0) before timeout (-1)
 		}

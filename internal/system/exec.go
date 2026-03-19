@@ -18,7 +18,7 @@ func RunCommand(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return strings.TrimSpace(string(output)), fmt.Errorf("%s %v failed: %w", name, args, err)
+		return strings.TrimSpace(string(output)), fmt.Errorf("%s %v 执行失败: %w", name, args, err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }

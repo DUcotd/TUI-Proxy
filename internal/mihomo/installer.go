@@ -20,6 +20,8 @@ const (
 	MihomoGitHubOwner = "MetaCubeX"
 	// MihomoGitHubRepo is the GitHub repo name for Mihomo releases.
 	MihomoGitHubRepo = "mihomo"
+	// GitHubAPITimeout is the timeout for GitHub API requests.
+	GitHubAPITimeout = 15 * time.Second
 )
 
 // GitHubRelease represents a GitHub release (minimal fields).
@@ -92,7 +94,7 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest",
 		MihomoGitHubOwner, MihomoGitHubRepo)
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: GitHubAPITimeout}
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
@@ -156,7 +158,7 @@ func isPlatformMatch(name, goos, goarch string) bool {
 		idx := strings.Index(name, "arm")
 		for idx >= 0 {
 			end := idx + 3
-			if end+1 <= len(name) && name[end:end+2] == "64" {
+			if end+2 <= len(name) && name[end:end+2] == "64" {
 				// This is "arm64", keep searching
 				idx = strings.Index(name[end:], "arm")
 				if idx >= 0 {

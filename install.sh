@@ -101,6 +101,8 @@ verify_checksum() {
 }
 
 # Fetch checksums file from release and extract hash for a specific asset
+# Returns the hash if found, or empty string if checksums file doesn't exist (404)
+# On network error, outputs "ERROR" to signal failure
 fetch_asset_sha256() {
     local repo="$1" version="$2" asset_name="$3"
     local checksum_url
@@ -111,15 +113,22 @@ fetch_asset_sha256() {
     fi
     local tmpfile
     tmpfile="$(mktemp)"
-    if curl -sfL --connect-timeout "$TIMEOUT" "$checksum_url" -o "$tmpfile" 2>/dev/null; then
+    local http_code
+    http_code=$(curl -sL --connect-timeout "$TIMEOUT" -w "%{http_code}" -o "$tmpfile" "$checksum_url" 2>/dev/null)
+    if [ "$http_code" = "200" ]; then
         # Extract hash for the specific asset (format: "hash  filename")
         local hash
         hash="$(grep "$asset_name" "$tmpfile" | head -1 | awk '{print $1}')"
         rm -f "$tmpfile"
         echo "$hash"
-    else
+    elif [ "$http_code" = "404" ]; then
+        # Checksums file doesn't exist (old release), return empty
         rm -f "$tmpfile"
         echo ""
+    else
+        # Network error or other failure
+        rm -f "$tmpfile"
+        echo "ERROR"
     fi
 }
 
@@ -180,7 +189,9 @@ install_clashctl() {
     # Verify SHA256 if available
     local expected_sha
     expected_sha="$(fetch_asset_sha256 "$CLASHCTL_REPO" "$CLASHCTL_VERSION" "clashctl-linux-${GOARCH}")"
-    if [ -n "$expected_sha" ]; then
+    if [ "$expected_sha" = "ERROR" ]; then
+        die "下载校验和文件失败，无法验证二进制完整性"
+    elif [ -n "$expected_sha" ]; then
         if ! verify_checksum "$INSTALL_DIR/clashctl" "$expected_sha"; then
             rm -f "$INSTALL_DIR/clashctl"
             die "clashctl 下载校验失败，已删除损坏文件"

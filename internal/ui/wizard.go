@@ -16,11 +16,11 @@ import (
 
 // WizardModel is the main TUI state.
 type WizardModel struct {
-	screen    Screen
-	appCfg    *core.AppConfig
-	width     int
-	height    int
-	quitting  bool
+	screen   Screen
+	appCfg   *core.AppConfig
+	width    int
+	height   int
+	quitting bool
 
 	// Subscription URL input
 	urlInput textinput.Model
@@ -58,8 +58,8 @@ type WizardModel struct {
 	testDone  int
 
 	// Viewport for scrollable lists
-	vp       viewport.Model
-	vpReady  bool
+	vp      viewport.Model
+	vpReady bool
 }
 
 // ExecStep represents a single execution step result.
@@ -116,11 +116,11 @@ func NewWizard() WizardModel {
 		ti.TextStyle = InputStyle
 		switch label {
 		case "配置目录":
-			ti.SetValue("/etc/mihomo")
+			ti.SetValue(core.DefaultConfigDir)
 		case "控制器地址":
-			ti.SetValue("127.0.0.1:9090")
+			ti.SetValue(core.DefaultControllerAddr)
 		case "mixed-port":
-			ti.SetValue("7890")
+			ti.SetValue(fmt.Sprintf("%d", core.DefaultMixedPort))
 		case "Provider 路径":
 			ti.SetValue("./providers/airport.yaml")
 		case "健康检查":
@@ -542,10 +542,9 @@ func (m WizardModel) loadNodes(groupName string) tea.Cmd {
 			return nodesLoadedMsg{err: err.Error()}
 		}
 
-		// Fetch all proxies to get protocol types
-		allProxies, _ := client.GetAllProxies()
+		// Fetch all proxies to get protocol types (optional, best-effort)
 		typeMap := make(map[string]string)
-		if allProxies != nil {
+		if allProxies, err := client.GetAllProxies(); err == nil {
 			for name, info := range allProxies {
 				typeMap[name] = info.Type
 			}
