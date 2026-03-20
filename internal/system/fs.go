@@ -73,20 +73,18 @@ func ValidateOutputPath(path string) error {
 		return fmt.Errorf("输出路径不能为空")
 	}
 
+	// Reject paths with obvious traversal attempts before cleaning
+	if strings.Contains(path, "../") || strings.Contains(path, "..\\") {
+		return fmt.Errorf("不允许使用路径遍历: %s", path)
+	}
+
 	// Clean the path to normalize it (resolve . and ..)
 	cleanPath := filepath.Clean(path)
 
-	// Check for path traversal attempts
-	if strings.Contains(cleanPath, "..") {
-		// After cleaning, if it still contains .., it's trying to go up
-		absPath, err := filepath.Abs(cleanPath)
-		if err != nil {
-			return fmt.Errorf("无法解析路径: %w", err)
-		}
-		// Verify the resolved path doesn't escape expected boundaries
-		if !strings.HasPrefix(absPath, "/") {
-			return fmt.Errorf("路径解析异常: %s", absPath)
-		}
+	// After cleaning, check if it's trying to escape to parent directories
+	// This catches cases like "/etc/mihomo/../../../etc/passwd"
+	if strings.HasPrefix(cleanPath, "../") {
+		return fmt.Errorf("不允许使用路径遍历: %s", path)
 	}
 
 	// Get absolute path for comparison

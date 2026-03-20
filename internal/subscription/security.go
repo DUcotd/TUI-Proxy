@@ -12,43 +12,43 @@ import (
 // These fields could be used for malicious purposes (DNS hijacking, script execution, etc.)
 var dangerousFields = map[string]bool{
 	// Script execution risks
-	"script":           true,
-	"script-context":   true,
-	"rule-providers":   false, // Allow but warn
+	"script":         true,
+	"script-context": true,
+	"rule-providers": false, // Allow but warn
 
 	// DNS hijacking risks
-	"dns":              true,
-	"fake-ip-filter":   false, // Allow with validation
-	"nameserver":       false, // Allow with validation
+	"dns":            true,
+	"fake-ip-filter": false, // Allow with validation
+	"nameserver":     false, // Allow with validation
 
 	// TUN mode risks (requires explicit user consent)
-	"tun":              true,
+	"tun": true,
 
 	// External process risks
-	"external-ui":      true,
-	"external-ui-url":  true,
+	"external-ui":     true,
+	"external-ui-url": true,
 
 	// File system risks
-	"mmdb":             true,
-	"geo-auto-update":  true,
-	"geodata-mode":     false,
+	"mmdb":            true,
+	"geo-auto-update": true,
+	"geodata-mode":    false,
 }
 
 // allowedTopLevelFields defines the safe configuration structure
 var allowedTopLevelFields = map[string]bool{
-	"mixed-port":        true,
-	"allow-lan":         true,
-	"log-level":         true,
-	"mode":              true,
+	"mixed-port":          true,
+	"allow-lan":           true,
+	"log-level":           true,
+	"mode":                true,
 	"external-controller": true,
-	"proxies":           true,
-	"proxy-providers":   true,
-	"proxy-groups":      true,
-	"rules":             true,
-	"hosts":             false, // Careful with hosts
-	"bind-address":      true,
-	"authentication":    false,
-	"skip-auth-prefixes": false,
+	"proxies":             true,
+	"proxy-providers":     true,
+	"proxy-groups":        true,
+	"rules":               true,
+	"hosts":               false, // Careful with hosts
+	"bind-address":        true,
+	"authentication":      false,
+	"skip-auth-prefixes":  false,
 }
 
 // ValidateYAMLSecurity checks a YAML document for dangerous fields.
@@ -66,7 +66,8 @@ func ValidateYAMLSecurity(data []byte, allowDangerous bool) ([]string, error) {
 		lowerKey := strings.ToLower(key)
 
 		// Check dangerous fields
-		if blocked, exists := dangerousFields[lowerKey]; exists && blocked {
+		blocked, isDangerous := dangerousFields[lowerKey]
+		if isDangerous && blocked {
 			if allowDangerous {
 				warnings = append(warnings, fmt.Sprintf("⚠️ 允许高风险字段: %s (使用了 --unsafe 选项)", key))
 			} else {
@@ -75,7 +76,7 @@ func ValidateYAMLSecurity(data []byte, allowDangerous bool) ([]string, error) {
 		}
 
 		// Warn about unknown fields
-		if !allowedTopLevelFields[lowerKey] && !exists {
+		if !allowedTopLevelFields[lowerKey] && !isDangerous {
 			warnings = append(warnings, fmt.Sprintf("⚠️ 未知配置字段: %s", key))
 		}
 	}
@@ -157,8 +158,8 @@ func containsDangerousScript(script string) bool {
 		"import os",
 		"import subprocess",
 		"__import__",
-		"Runtime.getRuntime",
-		"ProcessBuilder",
+		"runtime.getruntime",
+		"processbuilder",
 	}
 
 	for _, pattern := range dangerousPatterns {
