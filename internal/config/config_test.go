@@ -120,3 +120,28 @@ func TestSaveMihomoConfig(t *testing.T) {
 		t.Errorf("backup file %s doesn't exist", backup)
 	}
 }
+
+func TestSaveRawYAMLRejectsInvalidInputWithoutOverwriting(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.yaml")
+	original := []byte("mixed-port: 7890\n")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	backup, err := SaveRawYAML([]byte("key: [broken"), path)
+	if err == nil {
+		t.Fatal("SaveRawYAML() should reject invalid YAML")
+	}
+	if backup != "" {
+		t.Fatalf("backup = %q, want empty on pre-write validation failure", backup)
+	}
+
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("ReadFile() error = %v", readErr)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("config content = %q, want %q", string(got), string(original))
+	}
+}

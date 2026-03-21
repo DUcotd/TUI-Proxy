@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -13,8 +14,8 @@ import (
 )
 
 var (
-	updateDryRun    bool
-	updateForce     bool
+	updateDryRun     bool
+	updateForce      bool
 	updatePreRelease bool
 )
 
@@ -85,18 +86,25 @@ func runUpdateSelf(cmd *cobra.Command, args []string) error {
 	defer tmpFile.Close()
 
 	// Try with mirror
-	mirrorURL := mihomo.GetGitHubMirrorURL(downloadURL)
-	if err := system.DownloadFile(mirrorURL, tmpFile.Name()); err != nil {
-		// Fallback to original
-		if err := system.DownloadFile(downloadURL, tmpFile.Name()); err != nil {
-			return fmt.Errorf("下载失败: %w", err)
-		}
+	assets := make([]system.NamedDownload, 0, len(release.Assets))
+	for _, asset := range release.Assets {
+		assets = append(assets, system.NamedDownload{Name: asset.Name, URL: asset.BrowserDownloadURL})
+	}
+	checksumAsset, ok := system.FindChecksumAsset(assets, binaryName)
+	if !ok {
+		return fmt.Errorf("发布缺少 %s 的校验文件", binaryName)
+	}
+	if err := downloadVerifiedReleaseAsset(system.NamedDownload{Name: binaryName, URL: downloadURL}, checksumAsset, tmpFile.Name()); err != nil {
+		return fmt.Errorf("下载失败: %w", err)
 	}
 
 	// Verify the binary works
 	tmpFile.Close()
 	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
 		return fmt.Errorf("设置执行权限失败: %w", err)
+	}
+	if err := validateDownloadedClashctlBinary(tmpFile.Name()); err != nil {
+		return fmt.Errorf("下载的 clashctl 二进制不可用: %w", err)
 	}
 
 	// Get current binary path
@@ -138,11 +146,37 @@ type ClashctlRelease struct {
 func getLatestClashctlRelease() (*ClashctlRelease, error) {
 	var release ClashctlRelease
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", "DUcotd/clashctl")
+	if updatePreRelease {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/releases", "DUcotd/clashctl")
+		var releases []struct {
+			TagName    string `json:"tag_name"`
+			Prerelease bool   `json:"prerelease"`
+			Assets     []struct {
+				Name               string `json:"name"`
+				BrowserDownloadURL string `json:"browser_download_url"`
+			} `json:"assets"`
+		}
+		if err := system.FetchJSON(url, 15*time.Second, &releases); err != nil {
+			mirrorURL := mihomo.GetGitHubMirrorURL(url)
+			if mirrorErr := system.FetchJSON(mirrorURL, 15*time.Second, &releases); mirrorErr != nil {
+				return nil, err
+			}
+		}
+		for _, item := range releases {
+			if !item.Prerelease {
+				continue
+			}
+			release.TagName = item.TagName
+			release.Assets = item.Assets
+			return &release, nil
+		}
+		return nil, fmt.Errorf("未找到可用的预发布版本")
+	}
 
-	if err := system.FetchJSON(url, 15*1e9, &release); err != nil {
+	if err := system.FetchJSON(url, 15*time.Second, &release); err != nil {
 		// Try mirror
 		mirrorURL := mihomo.GetGitHubMirrorURL(url)
-		if mirrorErr := system.FetchJSON(mirrorURL, 15*1e9, &release); mirrorErr != nil {
+		if mirrorErr := system.FetchJSON(mirrorURL, 15*time.Second, &release); mirrorErr != nil {
 			return nil, err
 		}
 	}

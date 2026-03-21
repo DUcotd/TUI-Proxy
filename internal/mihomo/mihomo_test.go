@@ -327,6 +327,47 @@ func TestCanUseTUN(t *testing.T) {
 	_ = CanUseTUN()
 }
 
+func TestValidateConfigUsesConfigDirectoryAndFile(t *testing.T) {
+	tmp := t.TempDir()
+	binaryPath := filepath.Join(tmp, "mihomo")
+	argsFile := filepath.Join(tmp, "args.txt")
+	configPath := filepath.Join(tmp, "config.yaml")
+	writeExecutable(t, binaryPath, "#!/bin/sh\nif [ \"$1\" = \"-v\" ]; then\n  echo 'Mihomo Meta v1.2.3'\n  exit 0\nfi\nprintf '%s\n' \"$@\" > \"$CLASHCTL_ARGS_FILE\"\nexit 0\n")
+	if err := os.WriteFile(configPath, []byte("mixed-port: 7890\n"), 0600); err != nil {
+		t.Fatalf("WriteFile(config) error: %v", err)
+	}
+
+	oldPath := os.Getenv("PATH")
+	t.Setenv("PATH", tmp)
+	t.Setenv("CLASHCTL_ARGS_FILE", argsFile)
+	oldInstall := installedBinaryPath
+	installedBinaryPath = filepath.Join(tmp, "missing-install")
+	t.Cleanup(func() {
+		installedBinaryPath = oldInstall
+		t.Setenv("PATH", oldPath)
+	})
+
+	if err := ValidateConfig(configPath); err != nil {
+		t.Fatalf("ValidateConfig() error = %v", err)
+	}
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("ReadFile(args) error = %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(args)), "\n")
+	want := []string{"-t", "-d", filepath.Dir(configPath), "-f", configPath}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ValidateConfig args = %#v, want %#v", got, want)
+	}
+}
+
+func TestSystemdQuoteEscapesArguments(t *testing.T) {
+	got := systemdQuote(`/tmp/mihomo "config"`)
+	if got != `"/tmp/mihomo \"config\""` {
+		t.Fatalf("systemdQuote() = %q", got)
+	}
+}
+
 func writeExecutable(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0755); err != nil {

@@ -1,14 +1,18 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/core"
+	"clashctl/internal/mihomo"
 	"clashctl/internal/system"
 )
 
@@ -64,6 +68,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Find the right binary for current platform
 	binaryName := fmt.Sprintf("clashctl-%s-%s", runtime.GOOS, runtime.GOARCH)
 	downloadURL := ""
+	checksumAsset := system.NamedDownload{}
 
 	for _, asset := range release.Assets {
 		if asset.Name == binaryName {
@@ -74,6 +79,15 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	if downloadURL == "" {
 		return fmt.Errorf("未找到适用于 %s/%s 的二进制文件", runtime.GOOS, runtime.GOARCH)
+	}
+	assets := make([]system.NamedDownload, 0, len(release.Assets))
+	for _, asset := range release.Assets {
+		assets = append(assets, system.NamedDownload{Name: asset.Name, URL: asset.BrowserDownloadURL})
+	}
+	var ok bool
+	checksumAsset, ok = system.FindChecksumAsset(assets, binaryName)
+	if !ok {
+		return fmt.Errorf("发布缺少 %s 的校验文件", binaryName)
 	}
 
 	fmt.Printf("   下载地址: %s\n", downloadURL)
@@ -95,7 +109,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Download new binary to temp file
 	tmpPath := selfPath + ".tmp"
-	if err := system.DownloadFile(downloadURL, tmpPath); err != nil {
+	asset := system.NamedDownload{Name: binaryName, URL: downloadURL}
+	if err := downloadVerifiedReleaseAsset(asset, checksumAsset, tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("下载失败: %w", err)
 	}
@@ -104,6 +119,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("设置权限失败: %w", err)
+	}
+	if err := validateDownloadedClashctlBinary(tmpPath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("下载的 clashctl 二进制不可用: %w", err)
 	}
 
 	// Replace current binary
@@ -139,4 +158,42 @@ func fetchLatestRelease() (*GitHubRelease, error) {
 	}
 
 	return &release, nil
+}
+
+func downloadVerifiedReleaseAsset(asset, checksumAsset system.NamedDownload, destPath string) error {
+	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
+		mirrorAsset := asset
+		mirrorAsset.URL = mihomo.GetGitHubMirrorURL(asset.URL)
+		mirrorChecksum := checksumAsset
+		mirrorChecksum.URL = mihomo.GetGitHubMirrorURL(checksumAsset.URL)
+		if mirrorAsset.URL != asset.URL {
+			if mirrorErr := system.DownloadVerifiedFile(mirrorAsset, mirrorChecksum, destPath); mirrorErr == nil {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+func validateDownloadedClashctlBinary(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "version")
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("执行 version 超时")
+	}
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("version 执行失败: %s", msg)
+	}
+	if !strings.Contains(string(output), "clashctl ") {
+		return fmt.Errorf("version 输出异常: %s", strings.TrimSpace(string(output)))
+	}
+	return nil
 }

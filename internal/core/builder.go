@@ -30,9 +30,6 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 				URL:      cfg.SubscriptionURL,
 				Path:     cfg.ProviderPath,
 				Interval: 3600,
-				Override: &Override{
-					SkipCertVerify: true,
-				},
 				HealthCheck: &HealthCheck{
 					Enable:   cfg.EnableHealthCheck,
 					URL:      "https://cp.cloudflare.com/",

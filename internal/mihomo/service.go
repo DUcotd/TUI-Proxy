@@ -4,6 +4,7 @@ package mihomo
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/template"
 
 	"clashctl/internal/core"
@@ -20,7 +21,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={{.Binary}} -d {{.ConfigDir}}
+ExecStart={{systemdQuote .Binary}} -d {{systemdQuote .ConfigDir}}
 Restart=always
 RestartSec=3
 LimitNOFILE=65535
@@ -41,7 +42,9 @@ type ServiceConfig struct {
 
 // GenerateServiceFile writes a systemd service file to the appropriate location.
 func GenerateServiceFile(cfg ServiceConfig) error {
-	tmpl, err := template.New("service").Parse(serviceTemplate)
+	tmpl, err := template.New("service").Funcs(template.FuncMap{
+		"systemdQuote": systemdQuote,
+	}).Parse(serviceTemplate)
 	if err != nil {
 		return fmt.Errorf("解析服务模板失败: %w", err)
 	}
@@ -58,6 +61,11 @@ func GenerateServiceFile(cfg ServiceConfig) error {
 	}
 
 	return nil
+}
+
+func systemdQuote(value string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `	`, ` `)
+	return `"` + replacer.Replace(value) + `"`
 }
 
 // ReloadSystemd runs systemctl daemon-reload.

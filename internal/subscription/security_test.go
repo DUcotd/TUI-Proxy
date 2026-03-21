@@ -1,16 +1,20 @@
 package subscription
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"clashctl/internal/core"
 )
 
 func TestValidateYAMLSecurity_DangerousFields(t *testing.T) {
 	tests := []struct {
-		name      string
-		yaml      string
+		name        string
+		yaml        string
 		allowUnsafe bool
-		wantErr   bool
-		wantWarn  bool
+		wantErr     bool
+		wantWarn    bool
 	}{
 		{
 			name: "safe config",
@@ -85,6 +89,17 @@ external-ui: /tmp/malicious
 			wantErr:     true,
 			wantWarn:    false,
 		},
+		{
+			name: "warn disallowed auth fields",
+			yaml: `
+mixed-port: 7890
+authentication:
+  - user:pass
+`,
+			allowUnsafe: false,
+			wantErr:     false,
+			wantWarn:    true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -128,6 +143,62 @@ proxies:
 		t.Errorf("Sanitized YAML should be safe, got error: %v", err)
 	}
 	_ = warnings
+}
+
+func TestPatchRemoteYAMLRemovesUnsafeTopLevelFields(t *testing.T) {
+	cfg := core.DefaultAppConfig()
+	patched, err := PatchRemoteYAML([]byte(`
+mixed-port: 7890
+bind-address: 0.0.0.0
+hosts:
+  example.com: 127.0.0.1
+authentication:
+  - user:pass
+skip-auth-prefixes:
+  - /public
+proxies:
+  - name: test
+    type: socks5
+    server: example.com
+    port: 1080
+`), cfg)
+	if err != nil {
+		t.Fatalf("PatchRemoteYAML() error = %v", err)
+	}
+	text := string(patched)
+	for _, fragment := range []string{"bind-address:", "hosts:", "authentication:", "skip-auth-prefixes:"} {
+		if strings.Contains(text, fragment) {
+			t.Fatalf("patched YAML still contains %q: %s", fragment, text)
+		}
+	}
+}
+
+func TestPatchRemoteYAMLSanitizesProxyProviders(t *testing.T) {
+	cfg := core.DefaultAppConfig()
+	patched, err := PatchRemoteYAML([]byte(`
+proxy-providers:
+  airport 1:
+    type: http
+    url: https://example.com/provider.yaml
+    path: /etc/passwd
+    script: os.execute("bad")
+    health-check:
+      enable: true
+      url: https://cp.cloudflare.com/
+      interval: 300
+      lazy: true
+unknown-top-level: true
+`), cfg)
+	if err != nil {
+		t.Fatalf("PatchRemoteYAML() error = %v", err)
+	}
+	text := string(patched)
+	if strings.Contains(text, "unknown-top-level") || strings.Contains(text, "script:") {
+		t.Fatalf("patched YAML still contains stripped fields: %s", text)
+	}
+	if !strings.Contains(text, filepath.ToSlash("providers/airport-1.yaml")) {
+		t.Fatalf("patched YAML should contain sanitized provider path, got: %s", text)
+	}
 }
 
 func TestContainsDangerousScript(t *testing.T) {

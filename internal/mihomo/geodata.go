@@ -82,8 +82,8 @@ func EnsureGeoData(configDir string) (*GeoDataResult, error) {
 	for _, f := range DefaultGeoDataFiles() {
 		destPath := filepath.Join(configDir, f.Name)
 
-		// Skip if already exists and is not empty
-		if info, err := os.Stat(destPath); err == nil && info.Size() > 0 {
+		// Skip only when the file looks plausibly complete.
+		if info, err := os.Stat(destPath); err == nil && info.Size() > 1024 {
 			result.Files = append(result.Files, GeoDataFileResult{
 				Name:     f.Name,
 				Skipped:  true,
@@ -165,14 +165,42 @@ func downloadGeoFile(client system.HTTPDoer, url, destPath string) error {
 		reader = io.MultiReader(bytes.NewReader(buf[:n]), resp.Body)
 	}
 
-	out, err := os.Create(destPath)
+	tmpPath := destPath + ".tmp"
+	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		out.Close()
+		os.Remove(tmpPath)
+	}()
 
-	_, err = io.Copy(out, io.LimitReader(reader, GeoDataMaxSize))
-	return err
+	limited := io.LimitReader(reader, GeoDataMaxSize+1)
+	written, err := io.Copy(out, limited)
+	if err != nil {
+		return err
+	}
+	if written > GeoDataMaxSize {
+		return fmt.Errorf("文件超过大小上限 %d bytes", GeoDataMaxSize)
+	}
+	if written < 1024 {
+		return fmt.Errorf("下载内容过小，疑似错误响应")
+	}
+	if _, err := out.Seek(0, io.SeekStart); err == nil {
+		buf := make([]byte, 32)
+		n, _ := out.Read(buf)
+		lower := bytes.ToLower(bytes.TrimSpace(buf[:n]))
+		if bytes.HasPrefix(lower, []byte("<html")) || bytes.HasPrefix(lower, []byte("<!doctype")) {
+			return fmt.Errorf("下载内容不是 geodata 文件")
+		}
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, destPath)
 }
 
 // GeoDataReady checks if all required geodata files exist in configDir.
@@ -182,7 +210,7 @@ func GeoDataReady(configDir string) bool {
 			continue
 		}
 		info, err := os.Stat(filepath.Join(configDir, f.Name))
-		if err != nil || info.Size() == 0 {
+		if err != nil || info.Size() <= 1024 {
 			return false
 		}
 	}

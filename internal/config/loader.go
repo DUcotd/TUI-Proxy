@@ -42,13 +42,46 @@ func BackupFile(path string) (string, error) {
 
 // WriteConfig writes data to a path, creating parent directories if needed.
 func WriteConfig(path string, data []byte) error {
+	return WriteConfigAtomic(path, data)
+}
+
+// WriteConfigAtomic writes data to a temp file and renames it into place.
+func WriteConfigAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("创建目录 %s 失败: %w", dir, err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	tmpFile, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("创建临时配置文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("写入临时配置到 %s 失败: %w", tmpPath, err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("同步临时配置到磁盘失败: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("关闭临时配置文件失败: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0600); err != nil {
+		return fmt.Errorf("设置临时配置文件权限失败: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("写入配置到 %s 失败: %w", path, err)
+	}
+
+	dirHandle, err := os.Open(dir)
+	if err == nil {
+		_ = dirHandle.Sync()
+		_ = dirHandle.Close()
 	}
 
 	return nil
@@ -60,10 +93,14 @@ func ValidateYAML(path string) error {
 	if err != nil {
 		return err
 	}
+	return ValidateYAMLBytes(data, path)
+}
 
+// ValidateYAMLBytes checks whether a YAML document is parseable.
+func ValidateYAMLBytes(data []byte, source string) error {
 	var dummy any
 	if err := yaml.Unmarshal(data, &dummy); err != nil {
-		return fmt.Errorf("YAML 解析错误 %s: %w", path, err)
+		return fmt.Errorf("YAML 解析错误 %s: %w", source, err)
 	}
 
 	return nil

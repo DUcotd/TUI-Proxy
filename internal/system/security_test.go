@@ -1,6 +1,8 @@
 package system
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -158,6 +160,16 @@ func TestValidateSubscriptionURL(t *testing.T) {
 			url:     "https://example.com/sub\nrm -rf /",
 			wantErr: true,
 		},
+		{
+			name:    "localhost target",
+			url:     "http://127.0.0.1:8080/sub",
+			wantErr: true,
+		},
+		{
+			name:    "localhost hostname",
+			url:     "http://localhost:8080/sub",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -167,5 +179,24 @@ func TestValidateSubscriptionURL(t *testing.T) {
 				t.Errorf("ValidateSubscriptionURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateSubscriptionURL_AllowsLocalWithOverride(t *testing.T) {
+	t.Setenv("CLASHCTL_ALLOW_LOCAL_SUBSCRIPTION", "1")
+	if err := ValidateSubscriptionURL("http://127.0.0.1:8080/sub"); err != nil {
+		t.Fatalf("ValidateSubscriptionURL() error = %v, want nil with override", err)
+	}
+}
+
+func TestValidateOutputPath_RejectsSymlinkTarget(t *testing.T) {
+	tmpDir := t.TempDir()
+	linkDir := filepath.Join(tmpDir, "link")
+	if err := os.Symlink("/etc", linkDir); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	err := ValidateOutputPath(filepath.Join(linkDir, "shadow"))
+	if err == nil || !strings.Contains(err.Error(), "系统路径") {
+		t.Fatalf("ValidateOutputPath() error = %v, want system path error", err)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -98,9 +97,13 @@ func InstallMihomo() (*InstallResult, error) {
 	}
 
 	// Find matching binary
-	downloadURL, isGz := findMihomoAsset(release)
+	assetName, downloadURL, isGz := findMihomoAsset(release)
 	if downloadURL == "" {
 		return nil, fmt.Errorf("未找到适用于 %s/%s 的 Mihomo 二进制文件", runtime.GOOS, runtime.GOARCH)
+	}
+	checksumAsset, err := findReleaseChecksumAsset(release, assetName)
+	if err != nil {
+		return nil, err
 	}
 
 	tmpPath := installedBinaryPath + ".download"
@@ -109,11 +112,11 @@ func InstallMihomo() (*InstallResult, error) {
 	}
 
 	if isGz {
-		if err := downloadAndDecompressGz(downloadURL, tmpPath); err != nil {
+		if err := downloadAndDecompressGz(system.NamedDownload{Name: assetName, URL: downloadURL}, checksumAsset, tmpPath); err != nil {
 			return nil, fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	} else {
-		if err := downloadBinary(downloadURL, tmpPath); err != nil {
+		if err := downloadBinary(system.NamedDownload{Name: assetName, URL: downloadURL}, checksumAsset, tmpPath); err != nil {
 			return nil, fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	}
@@ -201,7 +204,7 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 
 // findMihomoAsset finds the correct binary asset for the current platform.
 // Returns the download URL and whether it's gzip-compressed.
-func findMihomoAsset(release *MihomoRelease) (string, bool) {
+func findMihomoAsset(release *MihomoRelease) (string, string, bool) {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
@@ -216,7 +219,7 @@ func findMihomoAsset(release *MihomoRelease) (string, bool) {
 			strings.HasSuffix(name, ".zst") {
 			continue
 		}
-		return asset.BrowserDownloadURL, false
+		return asset.Name, asset.BrowserDownloadURL, false
 	}
 
 	// Then try .gz (most common for mihomo releases)
@@ -226,11 +229,11 @@ func findMihomoAsset(release *MihomoRelease) (string, bool) {
 			continue
 		}
 		if strings.HasSuffix(name, ".gz") && !strings.Contains(name, "pkg.tar") {
-			return asset.BrowserDownloadURL, true
+			return asset.Name, asset.BrowserDownloadURL, true
 		}
 	}
 
-	return "", false
+	return "", "", false
 }
 
 // isPlatformMatch checks if an asset name matches the target OS and architecture.
@@ -259,13 +262,27 @@ func isPlatformMatch(name, goos, goarch string) bool {
 	return strings.Contains(name, goarch)
 }
 
-// downloadBinary downloads a file from url to destPath.
-func downloadBinary(url, destPath string) error {
-	if err := system.DownloadFile(url, destPath); err != nil {
-		// Try mirror URL if original fails
-		mirrorURL := GetGitHubMirrorURL(url)
-		if mirrorURL != url {
-			if mirrorErr := system.DownloadFile(mirrorURL, destPath); mirrorErr == nil {
+func findReleaseChecksumAsset(release *MihomoRelease, assetName string) (system.NamedDownload, error) {
+	assets := make([]system.NamedDownload, 0, len(release.Assets))
+	for _, asset := range release.Assets {
+		assets = append(assets, system.NamedDownload{Name: asset.Name, URL: asset.BrowserDownloadURL})
+	}
+	checksumAsset, ok := system.FindChecksumAsset(assets, assetName)
+	if !ok {
+		return system.NamedDownload{}, fmt.Errorf("发布缺少 %s 的校验文件", assetName)
+	}
+	return checksumAsset, nil
+}
+
+// downloadBinary downloads a verified file to destPath.
+func downloadBinary(asset, checksumAsset system.NamedDownload, destPath string) error {
+	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
+		mirrorAsset := asset
+		mirrorAsset.URL = GetGitHubMirrorURL(asset.URL)
+		mirrorChecksum := checksumAsset
+		mirrorChecksum.URL = GetGitHubMirrorURL(checksumAsset.URL)
+		if mirrorAsset.URL != asset.URL {
+			if mirrorErr := system.DownloadVerifiedFile(mirrorAsset, mirrorChecksum, destPath); mirrorErr == nil {
 				return nil
 			}
 		}
@@ -274,40 +291,21 @@ func downloadBinary(url, destPath string) error {
 	return nil
 }
 
-// downloadAndDecompressGz downloads a gzip-compressed file and decompresses it to destPath.
-func downloadAndDecompressGz(url, destPath string) error {
-	// Try original URL first
-	err := downloadAndDecompressGzDirect(url, destPath)
-	if err != nil {
-		// Try mirror URL if original fails
-		mirrorURL := GetGitHubMirrorURL(url)
-		if mirrorURL != url {
-			if mirrorErr := downloadAndDecompressGzDirect(mirrorURL, destPath); mirrorErr == nil {
-				return nil
-			}
-		}
+// downloadAndDecompressGz downloads a verified gzip-compressed file and decompresses it to destPath.
+func downloadAndDecompressGz(asset, checksumAsset system.NamedDownload, destPath string) error {
+	gzPath := destPath + ".gz"
+	defer os.Remove(gzPath)
+	if err := downloadBinary(asset, checksumAsset, gzPath); err != nil {
 		return err
 	}
-	return nil
-}
 
-// downloadAndDecompressGzDirect performs the actual gzip download and decompression.
-func downloadAndDecompressGzDirect(url, destPath string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	in, err := os.Open(gzPath)
 	if err != nil {
 		return err
 	}
-	resp, err := system.NewHTTPClient(5*time.Minute, false).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	defer in.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	gzReader, err := gzip.NewReader(resp.Body)
+	gzReader, err := gzip.NewReader(in)
 	if err != nil {
 		return fmt.Errorf("创建 gzip reader 失败: %w", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"clashctl/internal/core"
+	"clashctl/internal/netsec"
 )
 
 //go:embed scripts/prepare-subscription.sh
@@ -39,6 +40,10 @@ func ValidateSubscriptionURL(rawURL string) error {
 		if strings.Contains(rawURL, char) {
 			return fmt.Errorf("URL 包含非法字符: %s", char)
 		}
+	}
+
+	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
+		return err
 	}
 
 	return nil

@@ -34,6 +34,13 @@ var dangerousFields = map[string]bool{
 	"geodata-mode":    false,
 }
 
+var disallowedTopLevelFields = map[string]bool{
+	"hosts":              true,
+	"bind-address":       true,
+	"authentication":     true,
+	"skip-auth-prefixes": true,
+}
+
 // allowedTopLevelFields defines the safe configuration structure
 var allowedTopLevelFields = map[string]bool{
 	"mixed-port":          true,
@@ -45,10 +52,6 @@ var allowedTopLevelFields = map[string]bool{
 	"proxy-providers":     true,
 	"proxy-groups":        true,
 	"rules":               true,
-	"hosts":               false, // Careful with hosts
-	"bind-address":        true,
-	"authentication":      false,
-	"skip-auth-prefixes":  false,
 }
 
 // ValidateYAMLSecurity checks a YAML document for dangerous fields.
@@ -73,6 +76,11 @@ func ValidateYAMLSecurity(data []byte, allowDangerous bool) ([]string, error) {
 			} else {
 				criticalErrors = append(criticalErrors, fmt.Sprintf("❌ 检测到高风险字段: %s (使用 --unsafe 可强制启用)", key))
 			}
+		}
+
+		if disallowedTopLevelFields[lowerKey] {
+			warnings = append(warnings, fmt.Sprintf("⚠️ 已忽略高风险字段: %s", key))
+			continue
 		}
 
 		// Warn about unknown fields
@@ -184,6 +192,11 @@ func SanitizeYAML(data []byte) ([]byte, []string, error) {
 	for key := range doc {
 		lowerKey := strings.ToLower(key)
 		if blocked, exists := dangerousFields[lowerKey]; exists && blocked {
+			delete(doc, key)
+			removed = append(removed, key)
+			continue
+		}
+		if disallowedTopLevelFields[lowerKey] {
 			delete(doc, key)
 			removed = append(removed, key)
 		}

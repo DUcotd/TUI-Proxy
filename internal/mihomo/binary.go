@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -67,7 +68,7 @@ func ValidateConfig(configPath string) error {
 		return fmt.Errorf("找不到 mihomo 可执行文件: %w", err)
 	}
 
-	cmd := exec.Command(binary, "-t", "-d", configPath)
+	cmd := exec.Command(binary, "-t", "-d", filepath.Dir(configPath), "-f", configPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(output))

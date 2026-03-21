@@ -81,6 +81,9 @@ func TestBuildMihomoConfig(t *testing.T) {
 	if p.URL != "https://example.com/sub" {
 		t.Errorf("provider URL = %q", p.URL)
 	}
+	if p.Override != nil && p.Override.SkipCertVerify {
+		t.Error("provider should not disable TLS verification by default")
+	}
 
 	// Check TUN config exists for TUN mode
 	if m.TUN == nil {

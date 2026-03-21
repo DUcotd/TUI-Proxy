@@ -54,8 +54,8 @@ func TestResolveRemoteURLFallsBackToProvider(t *testing.T) {
 	resolver := &Resolver{
 		prepareURL: func(string, time.Duration) (*system.PreparedSubscription, error) {
 			return &system.PreparedSubscription{
-				Body:        []byte("<html>login</html>"),
-				FetchDetail: "bytes=18",
+				Body:        []byte("provider payload v2025"),
+				FetchDetail: "bytes=21",
 			}, nil
 		},
 	}
@@ -71,5 +71,26 @@ func TestResolveRemoteURLFallsBackToProvider(t *testing.T) {
 	}
 	if plan.MihomoConfig == nil || plan.MihomoConfig.ProxyProviders == nil {
 		t.Fatalf("unexpected provider plan: %#v", plan)
+	}
+}
+
+func TestResolveRemoteURLRejectsHTMLContent(t *testing.T) {
+	resolver := &Resolver{
+		prepareURL: func(string, time.Duration) (*system.PreparedSubscription, error) {
+			return &system.PreparedSubscription{
+				Body:        []byte("<html>login</html>"),
+				FetchDetail: "bytes=18",
+			}, nil
+		},
+	}
+	cfg := core.DefaultAppConfig()
+	cfg.SubscriptionURL = "https://example.com/sub"
+
+	_, err := resolver.ResolveRemoteURL(cfg, cfg.SubscriptionURL, time.Second)
+	if err == nil {
+		t.Fatal("ResolveRemoteURL() should reject HTML responses")
+	}
+	if !strings.Contains(err.Error(), "html") {
+		t.Fatalf("ResolveRemoteURL() error = %v, want html hint", err)
 	}
 }

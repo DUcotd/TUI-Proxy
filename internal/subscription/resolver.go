@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"clashctl/internal/config"
@@ -83,7 +84,7 @@ func (r *Resolver) ResolveRemoteURL(cfg *core.AppConfig, rawURL string, timeout 
 	if err != nil {
 		// Unknown content from a remote URL falls back to provider mode.
 		contentKind := system.ProbeContentKind(prepared.Body)
-		if contentKind == "unknown" || contentKind == "html" || contentKind == "empty" {
+		if contentKind == "unknown" {
 			return &ResolvedConfigPlan{
 				Kind:            PlanKindProvider,
 				ContentKind:     contentKind,
@@ -93,6 +94,9 @@ func (r *Resolver) ResolveRemoteURL(cfg *core.AppConfig, rawURL string, timeout 
 				VerifyInventory: true,
 				MihomoConfig:    core.BuildMihomoConfig(cfg),
 			}, nil
+		}
+		if contentKind == "html" || contentKind == "empty" {
+			return nil, fmt.Errorf("订阅返回了不可用内容 (%s): %s", contentKind, previewSubscriptionBody(prepared.Body))
 		}
 		return nil, err
 	}
@@ -136,4 +140,15 @@ func (r *Resolver) ResolveContent(cfg *core.AppConfig, content []byte) (*Resolve
 	default:
 		return nil, fmt.Errorf("未识别的订阅内容格式: %s", contentKind)
 	}
+}
+
+func previewSubscriptionBody(body []byte) string {
+	preview := strings.TrimSpace(string(body))
+	if preview == "" {
+		return "空响应"
+	}
+	if len(preview) > 80 {
+		preview = preview[:80] + "..."
+	}
+	return preview
 }

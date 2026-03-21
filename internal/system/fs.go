@@ -92,11 +92,15 @@ func ValidateOutputPath(path string) error {
 	if err != nil {
 		return fmt.Errorf("无法解析绝对路径: %w", err)
 	}
+	resolvedPath, err := resolvePathForWrite(absPath)
+	if err != nil {
+		return fmt.Errorf("无法解析输出路径: %w", err)
+	}
 
 	// Check against dangerous system paths
 	for _, dangerous := range dangerousPaths {
-		if absPath == dangerous || strings.HasPrefix(absPath, dangerous+"/") {
-			return fmt.Errorf("不允许写入系统路径: %s", absPath)
+		if resolvedPath == dangerous || strings.HasPrefix(resolvedPath, dangerous+"/") {
+			return fmt.Errorf("不允许写入系统路径: %s", resolvedPath)
 		}
 	}
 
@@ -110,28 +114,55 @@ func ValidateOutputPath(path string) error {
 	// Check if path is in a safe location or is relative
 	isSafe := false
 	for _, prefix := range safePrefixes {
-		if strings.HasPrefix(absPath, prefix) {
+		if strings.HasPrefix(resolvedPath, prefix) {
 			isSafe = true
 			break
 		}
 	}
 
 	// Allow current directory and relative paths
-	if !strings.HasPrefix(absPath, "/etc/") && !strings.HasPrefix(absPath, "/usr/") {
+	if !strings.HasPrefix(resolvedPath, "/etc/") && !strings.HasPrefix(resolvedPath, "/usr/") {
 		isSafe = true
 	}
 
 	// Special case: allow /etc/mihomo/ paths
-	if strings.HasPrefix(absPath, "/etc/mihomo") {
+	if strings.HasPrefix(resolvedPath, "/etc/mihomo") {
 		isSafe = true
 	}
 
 	if !isSafe {
 		// For /etc paths, only allow /etc/mihomo
-		if strings.HasPrefix(absPath, "/etc/") && !strings.HasPrefix(absPath, "/etc/mihomo") {
-			return fmt.Errorf("不允许写入 /etc/ 下的路径（仅允许 /etc/mihomo/）: %s", absPath)
+		if strings.HasPrefix(resolvedPath, "/etc/") && !strings.HasPrefix(resolvedPath, "/etc/mihomo") {
+			return fmt.Errorf("不允许写入 /etc/ 下的路径（仅允许 /etc/mihomo/）: %s", resolvedPath)
 		}
 	}
 
 	return nil
+}
+
+func resolvePathForWrite(path string) (string, error) {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved, nil
+	}
+
+	current := path
+	var relParts []string
+	for {
+		if _, err := os.Stat(current); err == nil {
+			resolvedCurrent, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return "", err
+			}
+			parts := append([]string{resolvedCurrent}, relParts...)
+			return filepath.Join(parts...), nil
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		relParts = append([]string{filepath.Base(current)}, relParts...)
+		current = parent
+	}
+	return path, nil
 }
