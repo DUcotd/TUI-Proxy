@@ -42,9 +42,49 @@ var nodesGroupsCmd = &cobra.Command{
 }
 
 var (
+	nodesListJSON       bool
+	nodesUseJSON        bool
+	nodesGroupsJSON     bool
 	nodesTestAllGroups  bool
 	nodesTestConcurrent int
+	nodesTestJSON       bool
 )
+
+type nodesListEntry struct {
+	Index    int    `json:"index"`
+	Name     string `json:"name"`
+	Selected bool   `json:"selected"`
+}
+
+type nodesListReport struct {
+	Group   string           `json:"group"`
+	Type    string           `json:"type"`
+	Current string           `json:"current,omitempty"`
+	Count   int              `json:"count"`
+	Nodes   []nodesListEntry `json:"nodes"`
+}
+
+type nodesUseReport struct {
+	Group   string `json:"group"`
+	Node    string `json:"node"`
+	Success bool   `json:"success"`
+}
+
+type nodesGroupSummary struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Current   string `json:"current,omitempty"`
+	NodeCount int    `json:"node_count"`
+}
+
+type nodesGroupsReport struct {
+	Groups []nodesGroupSummary `json:"groups"`
+}
+
+type nodesTestReport struct {
+	Concurrency int                        `json:"concurrency"`
+	Groups      []*mihomo.ProxyGroupDetail `json:"groups"`
+}
 
 var nodesTestCmd = &cobra.Command{
 	Use:   "test [代理组名]",
@@ -54,11 +94,15 @@ var nodesTestCmd = &cobra.Command{
 }
 
 func init() {
+	nodesListCmd.Flags().BoolVar(&nodesListJSON, "json", false, "以 JSON 输出节点列表")
+	nodesUseCmd.Flags().BoolVar(&nodesUseJSON, "json", false, "以 JSON 输出切换结果")
+	nodesGroupsCmd.Flags().BoolVar(&nodesGroupsJSON, "json", false, "以 JSON 输出代理组列表")
 	nodesCmd.AddCommand(nodesListCmd)
 	nodesCmd.AddCommand(nodesUseCmd)
 	nodesCmd.AddCommand(nodesGroupsCmd)
 	nodesTestCmd.Flags().BoolVar(&nodesTestAllGroups, "all-groups", false, "遍历所有代理组并测速")
 	nodesTestCmd.Flags().IntVar(&nodesTestConcurrent, "concurrency", 10, "并发测速数")
+	nodesTestCmd.Flags().BoolVar(&nodesTestJSON, "json", false, "以 JSON 输出测速结果")
 	nodesCmd.AddCommand(nodesTestCmd)
 	rootCmd.AddCommand(nodesCmd)
 }
@@ -79,6 +123,9 @@ func runNodesList(cmd *cobra.Command, args []string) error {
 	detail, err := client.GetProxyGroupDetail(groupName)
 	if err != nil {
 		return fmt.Errorf("获取节点列表失败: %w", err)
+	}
+	if nodesListJSON {
+		return writeJSON(buildNodesListReport(detail))
 	}
 
 	fmt.Printf("📡 代理组: %s (%s)\n\n", detail.Name, detail.Type)
@@ -117,6 +164,9 @@ func runNodesUse(cmd *cobra.Command, args []string) error {
 	if err := client.SwitchProxy(groupName, nodeName); err != nil {
 		return fmt.Errorf("切换节点失败: %w", err)
 	}
+	if nodesUseJSON {
+		return writeJSON(&nodesUseReport{Group: groupName, Node: nodeName, Success: true})
+	}
 
 	fmt.Printf("✅ 代理组 %s 已切换到节点: %s\n", groupName, nodeName)
 	return nil
@@ -136,8 +186,14 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(groups) == 0 {
+		if nodesGroupsJSON {
+			return writeJSON(&nodesGroupsReport{Groups: []nodesGroupSummary{}})
+		}
 		fmt.Println("未找到任何代理组")
 		return nil
+	}
+	if nodesGroupsJSON {
+		return writeJSON(buildNodesGroupsReport(groups))
 	}
 
 	fmt.Println("📁 代理组列表")
@@ -183,11 +239,20 @@ func runNodesTest(cmd *cobra.Command, args []string) error {
 		groupNames = sortedProxyGroupNames(groups)
 	}
 
-	for i, groupName := range groupNames {
+	details := make([]*mihomo.ProxyGroupDetail, 0, len(groupNames))
+	for _, groupName := range groupNames {
 		detail, err := client.TestProxyGroupNodes(groupName, nodesTestConcurrent)
 		if err != nil {
 			return fmt.Errorf("测速代理组 %s 失败: %w", groupName, err)
 		}
+		details = append(details, detail)
+	}
+
+	if nodesTestJSON {
+		return writeJSON(buildNodesTestReport(nodesTestConcurrent, details))
+	}
+
+	for i, detail := range details {
 		if i > 0 {
 			fmt.Println()
 		}
@@ -195,6 +260,44 @@ func runNodesTest(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func buildNodesTestReport(concurrency int, details []*mihomo.ProxyGroupDetail) *nodesTestReport {
+	groups := make([]*mihomo.ProxyGroupDetail, 0, len(details))
+	groups = append(groups, details...)
+	return &nodesTestReport{Concurrency: concurrency, Groups: groups}
+}
+
+func buildNodesListReport(detail *mihomo.ProxyGroupDetail) *nodesListReport {
+	report := &nodesListReport{
+		Group:   detail.Name,
+		Type:    mihomo.NormalizeProxyType(detail.Type),
+		Current: detail.Now,
+		Count:   len(detail.All),
+		Nodes:   make([]nodesListEntry, 0, len(detail.All)),
+	}
+	for i, nodeName := range detail.All {
+		report.Nodes = append(report.Nodes, nodesListEntry{
+			Index:    i + 1,
+			Name:     nodeName,
+			Selected: nodeName == detail.Now,
+		})
+	}
+	return report
+}
+
+func buildNodesGroupsReport(groups map[string]mihomo.ProxyGroup) *nodesGroupsReport {
+	report := &nodesGroupsReport{Groups: make([]nodesGroupSummary, 0, len(groups))}
+	for _, name := range sortedProxyGroupNames(groups) {
+		group := groups[name]
+		report.Groups = append(report.Groups, nodesGroupSummary{
+			Name:      name,
+			Type:      mihomo.NormalizeProxyType(group.Type),
+			Current:   group.Now,
+			NodeCount: len(group.All),
+		})
+	}
+	return report
 }
 
 func sortedProxyGroupNames(groups map[string]mihomo.ProxyGroup) []string {

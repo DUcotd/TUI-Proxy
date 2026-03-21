@@ -27,11 +27,19 @@ sudo clashctl init
 
 如果选择 `mixed-port` 模式，向导会在完成后自动把 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 写入当前用户的 shell 配置文件；新开终端自动生效，当前终端执行一次 `source ~/.bashrc`（或对应 shell 配置文件）即可。
 
+### clashctl advanced install
+安装 Mihomo 内核。
+
+```bash
+sudo clashctl advanced install --json
+```
+
 ### clashctl advanced export
 导出 Mihomo 配置文件。
 
 ```bash
 clashctl advanced export -u <订阅URL> [-m tun|mixed] [-p 端口] [-o 输出路径]
+clashctl advanced export -u <订阅URL> -o config.yaml --json
 ```
 
 ### clashctl advanced import
@@ -39,6 +47,7 @@ clashctl advanced export -u <订阅URL> [-m tun|mixed] [-p 端口] [-o 输出路
 
 ```bash
 clashctl advanced import -f sub.txt -o config.yaml
+clashctl advanced import -f sub.txt -o config.yaml --json
 clashctl advanced import -f sub.txt --apply --start
 cat sub.txt | clashctl advanced import -f - --apply --start
 ```
@@ -49,13 +58,30 @@ cat sub.txt | clashctl advanced import -f - --apply --start
 ### clashctl service status
 查看运行状态、配置目录、Controller API、代理组和当前节点。
 
+```bash
+clashctl service status
+clashctl service status --json
+```
+
 ### clashctl doctor
 环境自检（默认 8 项；启用 `--tun` 时为 11 项检查）。
 
 ```bash
 clashctl doctor         # 默认检查常规环境
 clashctl doctor --tun   # 额外检查 TUN 相关条件
+clashctl doctor --json  # 输出机器可读 JSON
 clashctl doctor openai  # 诊断 OpenAI/Codex 登录链路（含 chatgpt.com/backend-api）
+```
+
+### clashctl update
+检查并更新 clashctl。
+
+```bash
+clashctl update --dry-run      # 仅检查，不下载
+clashctl update --json --dry-run
+sudo clashctl update           # 下载并替换当前二进制
+clashctl self --dry-run        # 兼容别名，等价于 clashctl update --dry-run
+clashctl update --pre-release  # 包含预发布版本
 ```
 
 ### clashctl nodes
@@ -64,10 +90,28 @@ clashctl doctor openai  # 诊断 OpenAI/Codex 登录链路（含 chatgpt.com/bac
 ```bash
 clashctl nodes                      # 默认进入节点管理 TUI
 clashctl nodes list [组名]           # 列出节点
+clashctl nodes list [组名] --json    # 输出节点列表 JSON
 clashctl nodes test [组名]           # 测试一个代理组的全部节点延迟
 clashctl nodes test --all-groups     # 测试所有代理组
+clashctl nodes test --json           # 输出机器可读 JSON
 clashctl nodes use "节点名" [组名]    # 切换节点
+clashctl nodes use "节点名" [组名] --json
 clashctl nodes groups               # 列出所有代理组
+clashctl nodes groups --json        # 输出代理组 JSON
+```
+
+### clashctl backup / restore
+备份和恢复当前配置。
+
+```bash
+clashctl backup
+clashctl backup --json
+clashctl backup list
+clashctl backup list --json
+clashctl restore               # 列出可恢复备份
+clashctl restore --json        # 以 JSON 列出可恢复备份
+clashctl restore config-xxxx.yaml
+clashctl restore config-xxxx.yaml --json
 ```
 
 ### clashctl advanced config
@@ -76,6 +120,8 @@ clashctl nodes groups               # 列出所有代理组
 ```bash
 clashctl advanced config show    # 显示配置内容
 clashctl advanced config path    # 显示配置路径
+clashctl advanced config show --json
+clashctl advanced config path --json
 ```
 
 ## 配置文件
@@ -84,6 +130,8 @@ clashctl advanced config path    # 显示配置路径
 |------|------|
 | Mihomo 配置 | `/etc/mihomo/config.yaml`（默认，可在向导中修改） |
 | Provider 缓存 | `/etc/mihomo/providers/airport.yaml`（默认） |
+| clashctl 配置 | `~/.config/clashctl/config.yaml` |
+| 备份目录 | `~/.config/clashctl/backup/` |
 | systemd 服务 | `/etc/systemd/system/clashctl-mihomo.service` |
 
 ## 常见问题

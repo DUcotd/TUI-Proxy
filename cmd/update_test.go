@@ -1,10 +1,31 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestUpdateCommandProvidesSelfAlias(t *testing.T) {
+	if !hasAlias(updateCmd, "self") {
+		t.Fatal("update command should provide the self alias")
+	}
+}
+
+func TestFinishUpdateReportStoresError(t *testing.T) {
+	prev := updateJSON
+	t.Cleanup(func() { updateJSON = prev })
+	updateJSON = false
+	report := &updateRunReport{CurrentVersion: "v1.0.0", Action: "check"}
+	err := finishUpdateReport(report, errors.New("boom"))
+	if err == nil || err.Error() != "boom" {
+		t.Fatalf("finishUpdateReport() error = %v", err)
+	}
+	if report.Error != "boom" {
+		t.Fatalf("report.Error = %q, want boom", report.Error)
+	}
+}
 
 func TestValidateDownloadedClashctlBinary(t *testing.T) {
 	tmp := t.TempDir()

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
+	"clashctl/internal/releases"
 	"clashctl/internal/system"
 )
 
@@ -24,105 +26,157 @@ const (
 // currentVer references the canonical version from core.
 var currentVer = core.AppVersion
 
+var (
+	updateDryRun     bool
+	updateForce      bool
+	updatePreRelease bool
+	updateJSON       bool
+)
+
+type updateRunReport struct {
+	CurrentVersion string `json:"current_version"`
+	LatestVersion  string `json:"latest_version,omitempty"`
+	BinaryName     string `json:"binary_name,omitempty"`
+	DownloadURL    string `json:"download_url,omitempty"`
+	DryRun         bool   `json:"dry_run"`
+	Force          bool   `json:"force"`
+	PreRelease     bool   `json:"pre_release"`
+	UpToDate       bool   `json:"up_to_date"`
+	Updated        bool   `json:"updated"`
+	RequiresRoot   bool   `json:"requires_root,omitempty"`
+	Action         string `json:"action"`
+	Error          string `json:"error,omitempty"`
+}
+
 var updateCmd = &cobra.Command{
-	Use:   "update",
-	Short: "检查并更新 clashctl",
-	Long:  `检查 GitHub Releases 获取最新版本，如有更新则自动下载替换。`,
-	RunE:  runUpdate,
+	Use:     "update",
+	Aliases: []string{"self"},
+	Short:   "检查并更新 clashctl",
+	Long:    `检查 GitHub Releases 获取最新版本，如有更新则自动下载替换。`,
+	RunE:    runUpdate,
 }
 
 func init() {
+	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "仅检查更新，不实际下载")
+	updateCmd.Flags().BoolVar(&updateForce, "force", false, "强制更新（即使已是最新版本）")
+	updateCmd.Flags().BoolVar(&updatePreRelease, "pre-release", false, "包含预发布版本")
+	updateCmd.Flags().BoolVar(&updateJSON, "json", false, "以 JSON 输出更新结果")
 	rootCmd.AddCommand(updateCmd)
 }
 
-// GitHubRelease represents a GitHub release response.
-type GitHubRelease struct {
-	TagName string `json:"tag_name"`
-	Name    string `json:"name"`
-	Assets  []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
-}
-
 func runUpdate(cmd *cobra.Command, args []string) error {
-	fmt.Printf("🔍 当前版本: %s\n\n", currentVer)
-	fmt.Println("正在检查更新...")
+	report := &updateRunReport{
+		CurrentVersion: currentVer,
+		DryRun:         updateDryRun,
+		Force:          updateForce,
+		PreRelease:     updatePreRelease,
+		Action:         "check",
+	}
+	if !updateJSON {
+		fmt.Printf("🔍 当前版本: %s\n\n", currentVer)
+		fmt.Println("正在检查更新...")
+	}
 
 	// Fetch latest release info
-	release, err := fetchLatestRelease()
+	release, err := releases.FetchLatestGitHubRelease(githubOwner, githubRepo, updatePreRelease, mihomo.GetGitHubMirrorURL)
 	if err != nil {
-		return fmt.Errorf("检查更新失败: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("检查更新失败: %w", err))
 	}
 
 	latestTag := release.TagName
-	fmt.Printf("   最新版本: %s\n", latestTag)
-
-	if latestTag == currentVer {
-		fmt.Println("\n✅ 已是最新版本！")
-		return nil
+	report.LatestVersion = latestTag
+	if !updateJSON {
+		fmt.Printf("   最新版本: %s\n", latestTag)
 	}
 
-	fmt.Printf("\n🆕 发现新版本: %s → %s\n", currentVer, latestTag)
-
-	// Find the right binary for current platform
-	binaryName := fmt.Sprintf("clashctl-%s-%s", runtime.GOOS, runtime.GOARCH)
-	downloadURL := ""
-	checksumAsset := system.NamedDownload{}
-
-	for _, asset := range release.Assets {
-		if asset.Name == binaryName {
-			downloadURL = asset.BrowserDownloadURL
-			break
+	if latestTag == currentVer {
+		report.UpToDate = true
+		report.Action = "none"
+		if !updateForce {
+			if updateDryRun && !updateJSON {
+				fmt.Println("\nℹ️  运行模式：仅检查（dry-run）")
+			}
+			if !updateJSON {
+				fmt.Println("\n✅ 已是最新版本！")
+			}
+			return finishUpdateReport(report, nil)
+		}
+		report.Action = "update"
+		if !updateJSON {
+			fmt.Println("\nℹ️  当前版本已是最新版本，将按 --force 重新安装")
 		}
 	}
 
-	if downloadURL == "" {
-		return fmt.Errorf("未找到适用于 %s/%s 的二进制文件", runtime.GOOS, runtime.GOARCH)
-	}
-	assets := make([]system.NamedDownload, 0, len(release.Assets))
-	for _, asset := range release.Assets {
-		assets = append(assets, system.NamedDownload{Name: asset.Name, URL: asset.BrowserDownloadURL})
-	}
-	var ok bool
-	checksumAsset, ok = system.FindChecksumAsset(assets, binaryName)
-	if !ok {
-		return fmt.Errorf("发布缺少 %s 的校验文件", binaryName)
+	if latestTag != currentVer && !updateJSON {
+		fmt.Printf("\n🆕 发现新版本: %s → %s\n", currentVer, latestTag)
 	}
 
-	fmt.Printf("   下载地址: %s\n", downloadURL)
+	if updateDryRun {
+		report.Action = "check"
+		if !updateJSON {
+			fmt.Println("\nℹ️  运行模式：仅检查（dry-run）")
+			fmt.Printf("   可更新到: %s\n", latestTag)
+		}
+		return finishUpdateReport(report, nil)
+	}
+
+	// Find the right binary for current platform
+	binaryName := fmt.Sprintf("clashctl-%s-%s", runtime.GOOS, runtime.GOARCH)
+	report.BinaryName = binaryName
+	releaseAsset, ok := releases.FindGitHubReleaseAsset(release, binaryName)
+	if !ok {
+		return finishUpdateReport(report, fmt.Errorf("未找到适用于 %s/%s 的二进制文件", runtime.GOOS, runtime.GOARCH))
+	}
+	downloadURL := releaseAsset.BrowserDownloadURL
+	report.DownloadURL = downloadURL
+	checksumAsset := system.NamedDownload{}
+	assets := releases.NamedDownloads(release)
+	checksumAsset, ok = system.FindChecksumAsset(assets, binaryName)
+	if !ok {
+		return finishUpdateReport(report, fmt.Errorf("发布缺少 %s 的校验文件", binaryName))
+	}
+
+	if !updateJSON {
+		fmt.Printf("   下载地址: %s\n", downloadURL)
+	}
 
 	// Get current binary path
 	selfPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("无法获取当前程序路径: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("无法获取当前程序路径: %w", err))
 	}
 
 	// Check write permission
 	if !system.IsRoot() {
-		fmt.Println("\n⚠️  更新需要 root 权限")
-		fmt.Println("请使用 sudo clashctl update")
-		return fmt.Errorf("权限不足")
+		report.RequiresRoot = true
+		err := fmt.Errorf("权限不足")
+		if !updateJSON {
+			fmt.Println("\n⚠️  更新需要 root 权限")
+			fmt.Println("请使用 sudo clashctl update")
+		}
+		return finishUpdateReport(report, err)
 	}
 
-	fmt.Println("\n正在下载更新...")
+	if !updateJSON {
+		fmt.Println("\n正在下载更新...")
+	}
 
 	// Download new binary to temp file
 	tmpPath := selfPath + ".tmp"
 	asset := system.NamedDownload{Name: binaryName, URL: downloadURL}
-	if err := downloadVerifiedReleaseAsset(asset, checksumAsset, tmpPath); err != nil {
+	if err := releases.DownloadVerifiedGitHubAsset(asset, checksumAsset, mihomo.GetGitHubMirrorURL, tmpPath); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("下载失败: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("下载失败: %w", err))
 	}
 
 	// Make executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("设置权限失败: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("设置权限失败: %w", err))
 	}
 	if err := validateDownloadedClashctlBinary(tmpPath); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("下载的 clashctl 二进制不可用: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("下载的 clashctl 二进制不可用: %w", err))
 	}
 
 	// Replace current binary
@@ -130,50 +184,43 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	backupPath := selfPath + ".bak"
 	if err := os.Rename(selfPath, backupPath); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("备份旧版本失败: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("备份旧版本失败: %w", err))
 	}
 
 	if err := os.Rename(tmpPath, selfPath); err != nil {
 		// Try to restore backup
 		os.Rename(backupPath, selfPath)
-		return fmt.Errorf("替换文件失败: %w", err)
+		return finishUpdateReport(report, fmt.Errorf("替换文件失败: %w", err))
 	}
 
 	// Clean up backup
 	os.Remove(backupPath)
+	report.Updated = true
+	report.Action = "update"
 
-	fmt.Printf("\n✅ 更新完成！\n")
-	fmt.Printf("   %s → %s\n", currentVer, latestTag)
-	fmt.Println("\n运行 'clashctl --help' 查看新版本功能")
-
-	return nil
-}
-
-func fetchLatestRelease() (*GitHubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubOwner, githubRepo)
-
-	var release GitHubRelease
-	if err := system.FetchJSON(url, 10*time.Second, &release); err != nil {
-		return nil, fmt.Errorf("获取 GitHub Release 失败: %w", err)
+	if !updateJSON {
+		fmt.Printf("\n✅ 更新完成！\n")
+		fmt.Printf("   %s → %s\n", currentVer, latestTag)
+		fmt.Println("\n运行 'clashctl --help' 查看新版本功能")
 	}
 
-	return &release, nil
+	return finishUpdateReport(report, nil)
 }
 
-func downloadVerifiedReleaseAsset(asset, checksumAsset system.NamedDownload, destPath string) error {
-	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
-		mirrorAsset := asset
-		mirrorAsset.URL = mihomo.GetGitHubMirrorURL(asset.URL)
-		mirrorChecksum := checksumAsset
-		mirrorChecksum.URL = mihomo.GetGitHubMirrorURL(checksumAsset.URL)
-		if mirrorAsset.URL != asset.URL {
-			if mirrorErr := system.DownloadVerifiedFile(mirrorAsset, mirrorChecksum, destPath); mirrorErr == nil {
-				return nil
-			}
+func hasAlias(cmd *cobra.Command, alias string) bool {
+	return slices.Contains(cmd.Aliases, alias)
+}
+
+func finishUpdateReport(report *updateRunReport, err error) error {
+	if err != nil && report != nil {
+		report.Error = err.Error()
+	}
+	if updateJSON && report != nil {
+		if writeErr := writeJSON(report); writeErr != nil {
+			return writeErr
 		}
-		return err
 	}
-	return nil
+	return err
 }
 
 func validateDownloadedClashctlBinary(path string) error {

@@ -2,13 +2,31 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/mihomo"
 )
 
-var doctorTunMode bool
+var (
+	doctorTunMode bool
+	doctorJSON    bool
+)
+
+type doctorSummary struct {
+	Passed int `json:"passed"`
+	Failed int `json:"failed"`
+}
+
+type doctorReport struct {
+	Command string               `json:"command"`
+	TunMode bool                 `json:"tun_mode,omitempty"`
+	Summary doctorSummary        `json:"summary"`
+	Results []mihomo.CheckResult `json:"results"`
+	Hints   []string             `json:"hints,omitempty"`
+}
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
@@ -25,80 +43,111 @@ var doctorOpenAICmd = &cobra.Command{
 }
 
 func init() {
+	doctorCmd.PersistentFlags().BoolVar(&doctorJSON, "json", false, "以 JSON 输出检查结果")
 	doctorCmd.Flags().BoolVar(&doctorTunMode, "tun", false, "是否检查 TUN 模式相关条件")
 	doctorCmd.AddCommand(doctorOpenAICmd)
 	rootCmd.AddCommand(doctorCmd)
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	fmt.Println("🩺 环境自检")
-	fmt.Println()
-
 	cfg, err := loadAppConfig()
 	if err != nil {
 		return err
 	}
 
 	results := mihomo.RunDoctor(cfg.ConfigDir, cfg.ControllerAddr, doctorTunMode)
+	report := buildDoctorReport("doctor", doctorTunMode, results, nil)
+	if doctorJSON {
+		if err := writeJSON(report); err != nil {
+			return err
+		}
+		return doctorSummaryError(report.Summary)
+	}
 
-	return printDoctorResults(results)
+	fmt.Println("🩺 环境自检")
+	fmt.Println()
+	return printDoctorResults(os.Stdout, report)
 }
 
 func runDoctorOpenAI(cmd *cobra.Command, args []string) error {
-	fmt.Println("🩺 OpenAI / Codex 登录诊断")
-	fmt.Println()
-
 	cfg, err := loadAppConfig()
 	if err != nil {
 		return err
 	}
 
 	report := mihomo.RunOpenAIDoctor(cfg.MixedPort)
-	if len(report.Hints) > 0 {
-		defer func() {
-			fmt.Println()
-			fmt.Println("结论:")
-			for _, hint := range report.Hints {
-				fmt.Printf("  - %s\n", hint)
-			}
-		}()
+	result := buildDoctorReport("doctor openai", false, report.Results, report.Hints)
+	if doctorJSON {
+		if err := writeJSON(result); err != nil {
+			return err
+		}
+		return doctorSummaryError(result.Summary)
 	}
 
-	return printDoctorResults(report.Results)
+	fmt.Println("🩺 OpenAI / Codex 登录诊断")
+	fmt.Println()
+	return printDoctorResults(os.Stdout, result)
 }
 
-func printDoctorResults(results []mihomo.CheckResult) error {
+func buildDoctorReport(command string, tunMode bool, results []mihomo.CheckResult, hints []string) *doctorReport {
+	passed, failed := summarizeDoctorResults(results)
+	return &doctorReport{
+		Command: command,
+		TunMode: tunMode,
+		Summary: doctorSummary{Passed: passed, Failed: failed},
+		Results: results,
+		Hints:   append([]string(nil), hints...),
+	}
+}
 
-	passed := 0
-	failed := 0
-
+func summarizeDoctorResults(results []mihomo.CheckResult) (passed int, failed int) {
 	for _, r := range results {
+		if r.Passed {
+			passed++
+		} else {
+			failed++
+		}
+	}
+	return passed, failed
+}
+
+func printDoctorResults(w io.Writer, report *doctorReport) error {
+	for _, r := range report.Results {
 		status := "✅"
 		if !r.Passed {
 			status = "❌"
-			failed++
-		} else {
-			passed++
 		}
 
-		fmt.Printf("  %s %s\n", status, r.Name)
+		fmt.Fprintf(w, "  %s %s\n", status, r.Name)
 		if r.Problem != "" {
 			if r.Passed {
-				fmt.Printf("     %s\n", r.Problem)
+				fmt.Fprintf(w, "     %s\n", r.Problem)
 			} else {
-				fmt.Printf("     问题: %s\n", r.Problem)
+				fmt.Fprintf(w, "     问题: %s\n", r.Problem)
 			}
 		}
 		if r.Suggest != "" {
-			fmt.Printf("     建议: %s\n", r.Suggest)
+			fmt.Fprintf(w, "     建议: %s\n", r.Suggest)
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
 
-	fmt.Printf("检查完成: %d 通过, %d 失败\n", passed, failed)
+	if len(report.Hints) > 0 {
+		fmt.Fprintln(w, "结论:")
+		for _, hint := range report.Hints {
+			fmt.Fprintf(w, "  - %s\n", hint)
+		}
+		fmt.Fprintln(w)
+	}
 
-	if failed > 0 {
-		return fmt.Errorf("存在 %d 项检查未通过", failed)
+	fmt.Fprintf(w, "检查完成: %d 通过, %d 失败\n", report.Summary.Passed, report.Summary.Failed)
+
+	return doctorSummaryError(report.Summary)
+}
+
+func doctorSummaryError(summary doctorSummary) error {
+	if summary.Failed > 0 {
+		return fmt.Errorf("存在 %d 项检查未通过", summary.Failed)
 	}
 	return nil
 }

@@ -50,3 +50,62 @@ func TestPrintProxyGroupLatency(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildNodesTestReportJSONIncludesNodes(t *testing.T) {
+	report := buildNodesTestReport(8, []*mihomo.ProxyGroupDetail{{
+		Name: "PROXY",
+		Type: "Selector",
+		Now:  "Node A",
+		Nodes: []mihomo.ProxyNode{
+			{Name: "Node A", Delay: 88, Selected: true},
+		},
+	}})
+
+	if report.Concurrency != 8 {
+		t.Fatalf("Concurrency = %d, want 8", report.Concurrency)
+	}
+
+	var buf bytes.Buffer
+	if err := writeJSONTo(&buf, report); err != nil {
+		t.Fatalf("writeJSONTo() error = %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{`"concurrency": 8`, `"groups"`, `"nodes"`, `"delay": 88`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("JSON output missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestBuildNodesListReport(t *testing.T) {
+	report := buildNodesListReport(&mihomo.ProxyGroupDetail{
+		Name: "PROXY",
+		Type: "Selector",
+		Now:  "Node A",
+		All:  []string{"Node A", "Node B"},
+	})
+
+	if report.Group != "PROXY" || report.Type != "select" || report.Count != 2 {
+		t.Fatalf("report = %#v", report)
+	}
+	if len(report.Nodes) != 2 || !report.Nodes[0].Selected || report.Nodes[1].Selected {
+		t.Fatalf("nodes = %#v", report.Nodes)
+	}
+}
+
+func TestBuildNodesGroupsReportSorted(t *testing.T) {
+	report := buildNodesGroupsReport(map[string]mihomo.ProxyGroup{
+		"PROXY": {Name: "PROXY", Type: "Selector", Now: "Node A", All: []string{"Node A", "Node B"}},
+		"Auto":  {Name: "Auto", Type: "url-test", All: []string{"Node C"}},
+	})
+
+	if len(report.Groups) != 2 {
+		t.Fatalf("Groups = %#v", report.Groups)
+	}
+	if report.Groups[0].Name != "Auto" || report.Groups[0].Type != "url-test" {
+		t.Fatalf("first group = %#v", report.Groups[0])
+	}
+	if report.Groups[1].Name != "PROXY" || report.Groups[1].Current != "Node A" || report.Groups[1].NodeCount != 2 {
+		t.Fatalf("second group = %#v", report.Groups[1])
+	}
+}

@@ -33,6 +33,7 @@ var serviceStatusCmd = &cobra.Command{
 }
 
 func init() {
+	serviceStatusCmd.Flags().BoolVar(&statusJSON, "json", false, "以 JSON 输出状态信息")
 	serviceCmd.AddCommand(serviceStartCmd)
 	serviceCmd.AddCommand(serviceStopCmd)
 	serviceCmd.AddCommand(serviceRestartCmd)

@@ -2,8 +2,10 @@
 package mihomo
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -42,22 +44,65 @@ type ServiceConfig struct {
 
 // GenerateServiceFile writes a systemd service file to the appropriate location.
 func GenerateServiceFile(cfg ServiceConfig) error {
+	data, err := renderServiceFile(cfg)
+	if err != nil {
+		return err
+	}
+
+	path := fmt.Sprintf("/etc/systemd/system/%s.service", cfg.ServiceName)
+	return writeFileAtomic(path, data, 0644)
+}
+
+func renderServiceFile(cfg ServiceConfig) ([]byte, error) {
 	tmpl, err := template.New("service").Funcs(template.FuncMap{
 		"systemdQuote": systemdQuote,
 	}).Parse(serviceTemplate)
 	if err != nil {
-		return fmt.Errorf("解析服务模板失败: %w", err)
+		return nil, fmt.Errorf("解析服务模板失败: %w", err)
 	}
 
-	path := fmt.Sprintf("/etc/systemd/system/%s.service", cfg.ServiceName)
-	f, err := os.Create(path)
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, cfg); err != nil {
+		return nil, fmt.Errorf("写入服务文件失败: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("创建服务目录失败: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("创建服务文件 %s 失败: %w", path, err)
 	}
-	defer f.Close()
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
 
-	if err := tmpl.Execute(f, cfg); err != nil {
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
 		return fmt.Errorf("写入服务文件失败: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("同步服务文件失败: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("关闭服务文件失败: %w", err)
+	}
+	if err := os.Chmod(tmpPath, mode); err != nil {
+		return fmt.Errorf("设置服务文件权限失败: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("落盘服务文件失败: %w", err)
+	}
+
+	dirHandle, err := os.Open(filepath.Dir(path))
+	if err == nil {
+		_ = dirHandle.Sync()
+		_ = dirHandle.Close()
 	}
 
 	return nil

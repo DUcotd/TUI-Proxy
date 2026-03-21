@@ -10,7 +10,7 @@ import (
 func TestRootVisibleCommandsAreConsolidated(t *testing.T) {
 	got := visibleCommandNames(rootCmd)
 
-	for _, want := range []string{"init", "nodes", "service", "doctor", "advanced", "update", "version"} {
+	for _, want := range []string{"init", "nodes", "service", "doctor", "advanced", "backup", "restore", "update", "version"} {
 		if !slices.Contains(got, want) {
 			t.Fatalf("visible root commands = %#v, missing %q", got, want)
 		}

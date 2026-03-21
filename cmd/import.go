@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/app"
+	"clashctl/internal/config"
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 	"clashctl/internal/subscription"
@@ -23,7 +24,28 @@ var (
 	importMixedPort int
 	importApply     bool
 	importStart     bool
+	importJSON      bool
 )
+
+type importRunReport struct {
+	Source          string                  `json:"source"`
+	OutputPath      string                  `json:"output_path,omitempty"`
+	Apply           bool                    `json:"apply"`
+	Start           bool                    `json:"start"`
+	Mode            string                  `json:"mode"`
+	MixedPort       int                     `json:"mixed_port,omitempty"`
+	PlanKind        string                  `json:"plan_kind,omitempty"`
+	ContentKind     string                  `json:"content_kind,omitempty"`
+	DetectedFormat  string                  `json:"detected_format,omitempty"`
+	Summary         string                  `json:"summary,omitempty"`
+	ProxyCount      int                     `json:"proxy_count,omitempty"`
+	VerifyInventory bool                    `json:"verify_inventory"`
+	UsedProxyEnv    bool                    `json:"used_proxy_env,omitempty"`
+	BackupPath      string                  `json:"backup_path,omitempty"`
+	Warnings        []string                `json:"warnings,omitempty"`
+	Runtime         *runtimeStartJSONReport `json:"runtime,omitempty"`
+	Error           string                  `json:"error,omitempty"`
+}
 
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -54,19 +76,30 @@ func bindImportFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&importMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
 	cmd.Flags().BoolVar(&importApply, "apply", false, "直接写入当前 clashctl 配置目录")
 	cmd.Flags().BoolVar(&importStart, "start", false, "写入后立即启动 Mihomo（隐含 --apply）")
+	cmd.Flags().BoolVar(&importJSON, "json", false, "以 JSON 输出导入结果")
 	cmd.MarkFlagRequired("file")
 }
 
 func runImport(cmd *cobra.Command, args []string) error {
+	report := &importRunReport{
+		Apply:      importApply || importStart,
+		Start:      importStart,
+		Mode:       importMode,
+		OutputPath: importOutput,
+	}
+	if importMode == "mixed" {
+		report.MixedPort = importMixedPort
+	}
 	data, sourceDesc, err := readImportSource(importFile)
 	if err != nil {
-		return fmt.Errorf("读取订阅文件失败: %w", err)
+		return finishImportReport(report, fmt.Errorf("读取订阅文件失败: %w", err))
 	}
+	report.Source = sourceDesc
 
 	// Validate output path for security (only when not using --apply)
 	if !importApply && !importStart {
 		if err := system.ValidateOutputPath(importOutput); err != nil {
-			return fmt.Errorf("输出路径不安全: %w", err)
+			return finishImportReport(report, fmt.Errorf("输出路径不安全: %w", err))
 		}
 	}
 
@@ -74,7 +107,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	if importApply || importStart {
 		loaded, err := loadAppConfig()
 		if err != nil {
-			return err
+			return finishImportReport(report, err)
 		}
 		cfg = loaded
 	}
@@ -86,69 +119,122 @@ func runImport(cmd *cobra.Command, args []string) error {
 	if importApply || importStart {
 		resolved, warnings := runtime.ResolveConfig(cfg)
 		cfg = resolved
-		for _, warning := range warnings {
-			fmt.Printf("⚠️  %s\n", warning)
+		report.Mode = cfg.Mode
+		report.MixedPort = 0
+		if cfg.Mode == "mixed" {
+			report.MixedPort = cfg.MixedPort
+		}
+		report.Warnings = append(report.Warnings, warnings...)
+		if !importJSON {
+			for _, warning := range warnings {
+				fmt.Printf("⚠️  %s\n", warning)
+			}
 		}
 	}
 
 	resolver := subscription.NewResolver()
 	plan, err := resolver.ResolveContent(cfg, data)
 	if err != nil {
-		return fmt.Errorf("解析订阅文件失败: %w", err)
+		return finishImportReport(report, fmt.Errorf("解析订阅文件失败: %w", err))
 	}
+	populateImportReport(report, cfg, plan)
 
 	outputPath := importOutput
 	if importApply || importStart {
 		outputPath = filepath.Join(cfg.ConfigDir, "config.yaml")
+		report.OutputPath = outputPath
 		if err := system.EnsureDir(cfg.ConfigDir); err != nil {
-			return fmt.Errorf("创建配置目录失败: %w", err)
+			return finishImportReport(report, fmt.Errorf("创建配置目录失败: %w", err))
 		}
 		backupPath, err := plan.Save(outputPath)
 		if err != nil {
-			return fmt.Errorf("写入配置文件失败: %w", err)
+			return finishImportReport(report, fmt.Errorf("写入配置文件失败: %w", err))
 		}
+		report.BackupPath = backupPath
 		if err := app.SaveAppConfig(cfg); err != nil {
-			return fmt.Errorf("保存 clashctl 配置失败: %w", err)
+			return finishImportReport(report, fmt.Errorf("保存 clashctl 配置失败: %w", err))
 		}
-		fmt.Printf("✅ 静态配置已写入: %s\n", outputPath)
-		if backupPath != "" {
-			fmt.Printf("   已备份旧配置: %s\n", backupPath)
+		if !importJSON {
+			fmt.Printf("✅ 静态配置已写入: %s\n", outputPath)
+			if backupPath != "" {
+				fmt.Printf("   已备份旧配置: %s\n", backupPath)
+			}
 		}
 	} else {
+		report.OutputPath = outputPath
 		yamlData, err := plan.RenderYAML()
 		if err != nil {
-			return fmt.Errorf("YAML 渲染失败: %w", err)
+			return finishImportReport(report, fmt.Errorf("YAML 渲染失败: %w", err))
 		}
-		if err := os.WriteFile(outputPath, yamlData, 0644); err != nil {
-			return fmt.Errorf("写入文件失败: %w", err)
+		if err := config.WriteConfig(outputPath, yamlData); err != nil {
+			return finishImportReport(report, fmt.Errorf("写入文件失败: %w", err))
 		}
-		fmt.Printf("✅ 配置已导出到: %s\n", outputPath)
+		if !importJSON {
+			fmt.Printf("✅ 配置已导出到: %s\n", outputPath)
+		}
 	}
 
-	fmt.Printf("   来源格式: %s\n", plan.DetectedFormat)
-	fmt.Printf("   读取来源: %s\n", sourceDesc)
-	if plan.ProxyCount > 0 {
-		fmt.Printf("   节点数量: %d\n", plan.ProxyCount)
-	}
-	fmt.Printf("   模式: %s\n", cfg.Mode)
-	if plan.Kind != subscription.PlanKindProvider {
-		fmt.Println("   说明: 这是静态配置，不依赖服务器再次拉取订阅 URL")
+	if !importJSON {
+		fmt.Printf("   来源格式: %s\n", plan.DetectedFormat)
+		fmt.Printf("   读取来源: %s\n", sourceDesc)
+		if plan.ProxyCount > 0 {
+			fmt.Printf("   节点数量: %d\n", plan.ProxyCount)
+		}
+		fmt.Printf("   模式: %s\n", cfg.Mode)
+		if plan.Kind != subscription.PlanKindProvider {
+			fmt.Println("   说明: 这是静态配置，不依赖服务器再次拉取订阅 URL")
+		}
 	}
 
 	if importStart {
-		fmt.Println("🚀 正在启动 Mihomo...")
+		if !importJSON {
+			fmt.Println("🚀 正在启动 Mihomo...")
+		}
 		result, err := runtime.Start(cfg, mihomo.StartOptions{
 			VerifyInventory: true,
 			WaitRetries:     15,
 			WaitInterval:    2 * time.Second,
 		})
-		printRuntimeStartResult(os.Stdout, result)
+		report.Runtime = buildRuntimeStartJSONReport(result)
+		if !importJSON {
+			printRuntimeStartResult(os.Stdout, result)
+		}
 		if err != nil {
-			return err
+			return finishImportReport(report, err)
 		}
 	}
 
-	return nil
+	return finishImportReport(report, nil)
+}
+
+func populateImportReport(report *importRunReport, cfg *core.AppConfig, plan *subscription.ResolvedConfigPlan) {
+	if report == nil || plan == nil || cfg == nil {
+		return
+	}
+	report.Mode = cfg.Mode
+	report.MixedPort = 0
+	if cfg.Mode == "mixed" {
+		report.MixedPort = cfg.MixedPort
+	}
+	report.PlanKind = string(plan.Kind)
+	report.ContentKind = plan.ContentKind
+	report.DetectedFormat = plan.DetectedFormat
+	report.Summary = plan.Summary
+	report.ProxyCount = plan.ProxyCount
+	report.VerifyInventory = plan.VerifyInventory
+	report.UsedProxyEnv = plan.UsedProxyEnv
+}
+
+func finishImportReport(report *importRunReport, err error) error {
+	if err != nil && report != nil {
+		report.Error = err.Error()
+	}
+	if importJSON && report != nil {
+		if writeErr := writeJSON(report); writeErr != nil {
+			return writeErr
+		}
+	}
+	return err
 }
 
 func readImportSource(path string) ([]byte, string, error) {

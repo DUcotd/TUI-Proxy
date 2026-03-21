@@ -18,7 +18,7 @@ type ProxyGroupDetail struct {
 	Now     string      `json:"now"`
 	History []History   `json:"history"`
 	All     []string    `json:"all"`
-	Nodes   []ProxyNode `json:"-"` // populated by fetching each proxy
+	Nodes   []ProxyNode `json:"nodes"` // populated by fetching each proxy
 }
 
 // History represents a connection history entry.
@@ -29,11 +29,11 @@ type History struct {
 
 // ProxyNode represents a single proxy node with its details.
 type ProxyNode struct {
-	Name     string
-	Type     string
-	Protocol string // Vless, Hysteria2, Trojan, etc.
-	Delay    int    // latest delay in ms, 0 = unknown, -1 = timeout
-	Selected bool
+	Name     string `json:"name"`
+	Type     string `json:"type,omitempty"`
+	Protocol string `json:"protocol,omitempty"` // Vless, Hysteria2, Trojan, etc.
+	Delay    int    `json:"delay"`              // latest delay in ms, 0 = unknown, -1 = timeout
+	Selected bool   `json:"selected"`
 }
 
 // ProxyInventory summarizes whether a config has loaded usable proxy entries.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/config"
 	"clashctl/internal/core"
 	"clashctl/internal/system"
 )
@@ -15,7 +16,18 @@ var (
 	exportMode      string
 	exportMixedPort int
 	exportOutput    string
+	exportJSON      bool
 )
+
+type exportRunReport struct {
+	SubscriptionURL string   `json:"subscription_url"`
+	Mode            string   `json:"mode"`
+	MixedPort       int      `json:"mixed_port,omitempty"`
+	OutputPath      string   `json:"output_path"`
+	Written         bool     `json:"written"`
+	Errors          []string `json:"errors,omitempty"`
+	Error           string   `json:"error,omitempty"`
+}
 
 var exportCmd = &cobra.Command{
 	Use:   "export",
@@ -39,46 +51,73 @@ func bindExportFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&exportMode, "mode", "m", "mixed", "运行模式: tun 或 mixed")
 	cmd.Flags().IntVarP(&exportMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
 	cmd.Flags().StringVarP(&exportOutput, "output", "o", "config.yaml", "输出文件路径")
+	cmd.Flags().BoolVar(&exportJSON, "json", false, "以 JSON 输出导出结果")
 	cmd.MarkFlagRequired("url")
 }
 
 func runExport(cmd *cobra.Command, args []string) error {
-	// Build app config
 	cfg := core.DefaultAppConfig()
 	cfg.SubscriptionURL = exportSubURL
 	cfg.Mode = exportMode
 	cfg.MixedPort = exportMixedPort
+	report := buildExportReport(cfg, exportOutput)
 
-	// Validate
 	if errs := cfg.Validate(); len(errs) > 0 {
-		for _, e := range errs {
-			fmt.Fprintf(os.Stderr, "❌ %s\n", e)
+		report.Errors = append(report.Errors, errs...)
+		if !exportJSON {
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "❌ %s\n", e)
+			}
 		}
-		return fmt.Errorf("配置校验失败")
+		return finishExportReport(report, fmt.Errorf("配置校验失败"))
 	}
 
-	// Validate output path for security
 	if err := system.ValidateOutputPath(exportOutput); err != nil {
-		return fmt.Errorf("输出路径不安全: %w", err)
+		return finishExportReport(report, fmt.Errorf("输出路径不安全: %w", err))
 	}
 
-	// Build mihomo config
 	mihomoCfg := core.BuildMihomoConfig(cfg)
 
-	// Render to YAML
 	yamlData, err := core.RenderYAML(mihomoCfg)
 	if err != nil {
-		return fmt.Errorf("YAML 渲染失败: %w", err)
+		return finishExportReport(report, fmt.Errorf("YAML 渲染失败: %w", err))
 	}
 
-	// Write to file
-	if err := os.WriteFile(exportOutput, yamlData, 0644); err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
+	if err := config.WriteConfig(exportOutput, yamlData); err != nil {
+		return finishExportReport(report, fmt.Errorf("写入文件失败: %w", err))
+	}
+	report.Written = true
+	if exportJSON {
+		return finishExportReport(report, nil)
 	}
 
 	fmt.Printf("✅ 配置已导出到: %s\n", exportOutput)
 	fmt.Printf("   模式: %s\n", cfg.Mode)
 	fmt.Printf("   订阅: %s\n", cfg.SubscriptionURL)
 
-	return nil
+	return finishExportReport(report, nil)
+}
+
+func buildExportReport(cfg *core.AppConfig, outputPath string) *exportRunReport {
+	report := &exportRunReport{
+		SubscriptionURL: cfg.SubscriptionURL,
+		Mode:            cfg.Mode,
+		OutputPath:      outputPath,
+	}
+	if cfg.Mode == "mixed" {
+		report.MixedPort = cfg.MixedPort
+	}
+	return report
+}
+
+func finishExportReport(report *exportRunReport, err error) error {
+	if err != nil && report != nil {
+		report.Error = err.Error()
+	}
+	if exportJSON && report != nil {
+		if writeErr := writeJSON(report); writeErr != nil {
+			return writeErr
+		}
+	}
+	return err
 }

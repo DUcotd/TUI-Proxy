@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"clashctl/internal/core"
 	"github.com/spf13/cobra"
@@ -9,6 +11,67 @@ import (
 	"clashctl/internal/mihomo"
 	"clashctl/internal/system"
 )
+
+var statusJSON bool
+
+type statusServiceReport struct {
+	Active bool   `json:"active"`
+	Mode   string `json:"mode"`
+	Error  string `json:"error,omitempty"`
+}
+
+type statusBinaryReport struct {
+	Found   bool   `json:"found"`
+	Path    string `json:"path,omitempty"`
+	Version string `json:"version,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+type statusConfigReport struct {
+	Dir            string `json:"dir"`
+	Mode           string `json:"mode"`
+	MixedPort      int    `json:"mixed_port,omitempty"`
+	ControllerAddr string `json:"controller_addr"`
+}
+
+type statusProxyEnvReport struct {
+	Configured bool     `json:"configured"`
+	Entries    []string `json:"entries,omitempty"`
+	Messages   []string `json:"messages,omitempty"`
+}
+
+type statusControllerReport struct {
+	Reachable bool   `json:"reachable"`
+	Version   string `json:"version,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+type statusProxyGroupReport struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Current   string `json:"current,omitempty"`
+	NodeCount int    `json:"node_count"`
+}
+
+type statusInventoryReport struct {
+	Loaded         int      `json:"loaded"`
+	Current        string   `json:"current,omitempty"`
+	Candidates     []string `json:"candidates,omitempty"`
+	OnlyCompatible bool     `json:"only_compatible"`
+}
+
+type statusReport struct {
+	Service        statusServiceReport      `json:"service"`
+	Binary         statusBinaryReport       `json:"binary"`
+	Config         statusConfigReport       `json:"config"`
+	ProxyEnv       statusProxyEnvReport     `json:"proxy_env"`
+	Controller     statusControllerReport   `json:"controller"`
+	Groups         []statusProxyGroupReport `json:"groups,omitempty"`
+	GroupsError    string                   `json:"groups_error,omitempty"`
+	Inventory      *statusInventoryReport   `json:"inventory,omitempty"`
+	InventoryError string                   `json:"inventory_error,omitempty"`
+	Warnings       []string                 `json:"warnings,omitempty"`
+}
 
 var statusCmd = &cobra.Command{
 	Use:    "status",
@@ -19,96 +82,203 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "以 JSON 输出状态信息")
 	rootCmd.AddCommand(statusCmd)
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	fmt.Println("📊 Mihomo 状态")
-	fmt.Println()
 	cfg, err := loadAppConfig()
 	if err != nil {
 		return err
 	}
+	proxyEnv := system.ProxyEnvForDisplay()
 
 	// Check systemd service
 	serviceActive := false
+	var serviceErr error
 	if mihomo.HasSystemd() {
-		serviceActive, _ = mihomo.ServiceStatus(mihomo.DefaultServiceName)
+		serviceActive, serviceErr = mihomo.ServiceStatus(mihomo.DefaultServiceName)
 	}
 
 	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
-	controllerOK := client.CheckConnection() == nil
-
-	if serviceActive {
-		fmt.Println("  服务状态: ✅ 运行中 (systemd)")
-	} else if controllerOK {
-		fmt.Println("  服务状态: ✅ 运行中 (子进程/API 可达)")
-	} else {
-		fmt.Println("  服务状态: ❌ 未运行")
+	controllerErr := client.CheckConnection()
+	controllerOK := controllerErr == nil
+	controllerVersion := ""
+	if controllerOK {
+		controllerVersion, _ = client.Version()
 	}
 
 	// Check binary
 	binary, err := mihomo.FindBinary()
-	if err != nil {
-		fmt.Printf("  可执行文件: ❌ %s\n", err.Error())
-	} else {
-		version, _ := mihomo.GetBinaryVersion()
-		fmt.Printf("  可执行文件: ✅ %s\n", binary)
-		if version != "" {
-			fmt.Printf("  版本: %s\n", version)
-		}
+	binaryVersion := ""
+	if err == nil {
+		binaryVersion, _ = mihomo.GetBinaryVersion()
 	}
 
-	// Check config path
-	fmt.Printf("  配置目录: %s\n", cfg.ConfigDir)
-	fmt.Printf("  运行模式: %s\n", modeLabel(cfg.Mode))
-	if cfg.Mode == "mixed" {
-		fmt.Printf("  mixed-port: %d\n", cfg.MixedPort)
-	}
-	for _, line := range proxyStatusLines(cfg, system.ProxyEnvForDisplay()) {
-		fmt.Printf("  %s\n", line)
-	}
-
-	// Check controller API
-	if err := client.CheckConnection(); err != nil {
-		fmt.Printf("  Controller API: ❌ %s\n", err.Error())
-	} else {
-		mihomoVer, _ := client.Version()
-		fmt.Printf("  Controller API: ✅ 可达")
-		if mihomoVer != "" {
-			fmt.Printf(" (Mihomo %s)", mihomoVer)
-		}
-		fmt.Println()
-	}
-
-	// Show all proxy groups if API is reachable
+	var groups map[string]mihomo.ProxyGroup
+	var groupsErr error
+	var inventory *mihomo.ProxyInventory
+	var inventoryErr error
 	if controllerOK {
-		groups, err := client.GetAllProxyGroups()
-		if err == nil && len(groups) > 0 {
-			fmt.Println("\n  ── 代理组 ──")
-			for name, group := range groups {
-				typ := mihomo.NormalizeProxyType(group.Type)
-				marker := "  "
-				if group.Now != "" {
-					marker = "▸ "
-				}
-				fmt.Printf("\n  %s%s [%s]\n", marker, name, typ)
-				if group.Now != "" {
-					fmt.Printf("     当前: %s\n", group.Now)
-				}
-				fmt.Printf("     节点数: %d\n", len(group.All))
-			}
-
-			if inv, err := client.InspectProxyInventory("PROXY"); err == nil {
-				if inv.OnlyCompatible {
-					fmt.Println("\n  ⚠ 订阅节点未成功加载；当前仅剩 COMPATIBLE。")
-					fmt.Println("    常见原因: 服务器无法直连订阅 URL，或 provider 拉取失败。")
-					fmt.Println("    可改用 'clashctl advanced import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
-				}
-			}
-		}
+		groups, groupsErr = client.GetAllProxyGroups()
+		inventory, inventoryErr = client.InspectProxyInventory("PROXY")
 	}
 
+	report := buildStatusReport(cfg, proxyEnv, serviceActive, serviceErr, binary, binaryVersion, err, controllerVersion, controllerErr, groups, groupsErr, inventory, inventoryErr)
+	if statusJSON {
+		return writeJSON(report)
+	}
+
+	fmt.Println("📊 Mihomo 状态")
+	fmt.Println()
+	return printStatusReport(os.Stdout, report)
+}
+
+func buildStatusReport(cfg *core.AppConfig, proxyEnv []string, serviceActive bool, serviceErr error, binary string, binaryVersion string, binaryErr error, controllerVersion string, controllerErr error, groups map[string]mihomo.ProxyGroup, groupsErr error, inventory *mihomo.ProxyInventory, inventoryErr error) *statusReport {
+	report := &statusReport{
+		Service: statusServiceReport{},
+		Binary: statusBinaryReport{
+			Found: binaryErr == nil,
+			Path:  binary,
+		},
+		Config: statusConfigReport{
+			Dir:            cfg.ConfigDir,
+			Mode:           cfg.Mode,
+			ControllerAddr: cfg.ControllerAddr,
+		},
+		ProxyEnv: statusProxyEnvReport{
+			Configured: len(proxyEnv) > 0,
+			Entries:    append([]string(nil), proxyEnv...),
+			Messages:   proxyStatusLines(cfg, proxyEnv),
+		},
+		Controller: statusControllerReport{
+			Reachable: controllerErr == nil,
+			Version:   controllerVersion,
+		},
+	}
+	if cfg.Mode == "mixed" {
+		report.Config.MixedPort = cfg.MixedPort
+	}
+	if serviceErr != nil {
+		report.Service.Error = serviceErr.Error()
+	}
+	if serviceActive {
+		report.Service.Active = true
+		report.Service.Mode = "systemd"
+	} else if controllerErr == nil {
+		report.Service.Active = true
+		report.Service.Mode = "process"
+	} else {
+		report.Service.Mode = "stopped"
+	}
+	if binaryErr != nil {
+		report.Binary.Error = binaryErr.Error()
+	} else {
+		report.Binary.Version = binaryVersion
+	}
+	if controllerErr != nil {
+		report.Controller.Error = controllerErr.Error()
+	}
+	if groupsErr != nil {
+		report.GroupsError = groupsErr.Error()
+	} else if len(groups) > 0 {
+		report.Groups = make([]statusProxyGroupReport, 0, len(groups))
+		for _, name := range sortedProxyGroupNames(groups) {
+			group := groups[name]
+			report.Groups = append(report.Groups, statusProxyGroupReport{
+				Name:      name,
+				Type:      mihomo.NormalizeProxyType(group.Type),
+				Current:   group.Now,
+				NodeCount: len(group.All),
+			})
+		}
+	}
+	if inventoryErr != nil {
+		report.InventoryError = inventoryErr.Error()
+	} else if inventory != nil {
+		report.Inventory = &statusInventoryReport{
+			Loaded:         inventory.Loaded,
+			Current:        inventory.Current,
+			Candidates:     append([]string(nil), inventory.Candidates...),
+			OnlyCompatible: inventory.OnlyCompatible,
+		}
+		if inventory.OnlyCompatible {
+			report.Warnings = append(report.Warnings, "订阅节点未成功加载；当前仅剩 COMPATIBLE，可改用 clashctl advanced import 生成静态配置")
+		}
+	}
+	return report
+}
+
+func printStatusReport(w io.Writer, report *statusReport) error {
+	if report.Service.Active {
+		switch report.Service.Mode {
+		case "systemd":
+			fmt.Fprintln(w, "  服务状态: ✅ 运行中 (systemd)")
+		case "process":
+			fmt.Fprintln(w, "  服务状态: ✅ 运行中 (子进程/API 可达)")
+		default:
+			fmt.Fprintf(w, "  服务状态: ✅ 运行中 (%s)\n", report.Service.Mode)
+		}
+	} else {
+		fmt.Fprintln(w, "  服务状态: ❌ 未运行")
+	}
+	if report.Service.Error != "" {
+		fmt.Fprintf(w, "  systemd 检查: ⚠ %s\n", report.Service.Error)
+	}
+
+	if report.Binary.Found {
+		fmt.Fprintf(w, "  可执行文件: ✅ %s\n", report.Binary.Path)
+		if report.Binary.Version != "" {
+			fmt.Fprintf(w, "  版本: %s\n", report.Binary.Version)
+		}
+	} else {
+		fmt.Fprintf(w, "  可执行文件: ❌ %s\n", report.Binary.Error)
+	}
+
+	fmt.Fprintf(w, "  配置目录: %s\n", report.Config.Dir)
+	fmt.Fprintf(w, "  运行模式: %s\n", modeLabel(report.Config.Mode))
+	if report.Config.Mode == "mixed" {
+		fmt.Fprintf(w, "  mixed-port: %d\n", report.Config.MixedPort)
+	}
+	for _, line := range report.ProxyEnv.Messages {
+		fmt.Fprintf(w, "  %s\n", line)
+	}
+
+	if report.Controller.Reachable {
+		fmt.Fprintf(w, "  Controller API: ✅ 可达")
+		if report.Controller.Version != "" {
+			fmt.Fprintf(w, " (Mihomo %s)", report.Controller.Version)
+		}
+		fmt.Fprintln(w)
+	} else {
+		fmt.Fprintf(w, "  Controller API: ❌ %s\n", report.Controller.Error)
+	}
+
+	if report.GroupsError != "" {
+		fmt.Fprintf(w, "  代理组信息: ⚠ %s\n", report.GroupsError)
+	}
+	if len(report.Groups) > 0 {
+		fmt.Fprintln(w, "\n  ── 代理组 ──")
+		for _, group := range report.Groups {
+			marker := "  "
+			if group.Current != "" {
+				marker = "▸ "
+			}
+			fmt.Fprintf(w, "\n  %s%s [%s]\n", marker, group.Name, group.Type)
+			if group.Current != "" {
+				fmt.Fprintf(w, "     当前: %s\n", group.Current)
+			}
+			fmt.Fprintf(w, "     节点数: %d\n", group.NodeCount)
+		}
+	}
+	if report.Inventory != nil && report.Inventory.OnlyCompatible {
+		fmt.Fprintln(w, "\n  ⚠ 订阅节点未成功加载；当前仅剩 COMPATIBLE。")
+		fmt.Fprintln(w, "    常见原因: 服务器无法直连订阅 URL，或 provider 拉取失败。")
+		fmt.Fprintln(w, "    可改用 'clashctl advanced import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
+	}
+	if report.InventoryError != "" {
+		fmt.Fprintf(w, "\n  订阅节点检查: ⚠ %s\n", report.InventoryError)
+	}
 	return nil
 }
 

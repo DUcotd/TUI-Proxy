@@ -61,20 +61,36 @@ sudo clashctl init
 
 # 环境自检
 sudo clashctl doctor
+clashctl doctor --json
 clashctl doctor openai
 
 # 日常操作
 clashctl nodes
+clashctl nodes list --json
+clashctl nodes groups --json
+clashctl nodes use "节点名" --json
 clashctl service status
+clashctl service status --json
 clashctl nodes test
+clashctl nodes test --json
 clashctl nodes test --all-groups
+clashctl backup
+clashctl backup --json
+clashctl restore --json
+clashctl restore
 
 # 高级/脚本化操作
-sudo clashctl advanced install
+sudo clashctl advanced install --json
 sudo clashctl advanced export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
+clashctl advanced export -u "https://你的订阅链接" -o config.yaml --json
 clashctl advanced import -f sub.txt -o config.yaml
 clashctl advanced import -f sub.txt --apply --start
+clashctl advanced import -f sub.txt --json
+clashctl advanced config path --json
+clashctl advanced config show --json
 sudo clashctl service start
+clashctl update --dry-run
+clashctl update --json --dry-run
 ```
 
 ## TUI 节点管理
@@ -106,16 +122,19 @@ clashctl nodes
 | `clashctl service ...` | 启动 / 停止 / 重启 / 查看状态 |
 | `clashctl doctor` | 环境自检（默认 8 项，`--tun` 时 11 项） |
 | `clashctl doctor openai` | 诊断 OpenAI/Codex 登录链路（含 `chatgpt.com/backend-api`） |
-| `clashctl advanced install` | 安装 Mihomo 内核 |
-| `clashctl advanced export` | 导出配置文件 |
-| `clashctl advanced import` | 从本地原始订阅文件生成静态配置，可直接应用并启动 |
-| `clashctl advanced config show` | 显示配置内容 |
-| `clashctl advanced config path` | 显示配置路径 |
-| `clashctl nodes list` | 列出代理节点 |
+| `clashctl advanced install` | 安装 Mihomo 内核，支持 `--json` |
+| `clashctl advanced export` | 导出配置文件，支持 `--json` |
+| `clashctl advanced import` | 从本地原始订阅文件生成静态配置，可直接应用并启动，支持 `--json` |
+| `clashctl advanced config show` | 显示配置内容，支持 `--json` |
+| `clashctl advanced config path` | 显示配置路径，支持 `--json` |
+| `clashctl nodes list` | 列出代理节点，支持 `--json` |
 | `clashctl nodes test` | 测试代理组节点延迟 |
-| `clashctl nodes use` | 切换代理节点 |
-| `clashctl nodes groups` | 列出代理组 |
-| `clashctl update` | 检查并更新 clashctl |
+| `clashctl nodes use` | 切换代理节点，支持 `--json` |
+| `clashctl nodes groups` | 列出代理组，支持 `--json` |
+| `clashctl backup` | 备份当前 Mihomo 与 clashctl 配置，支持 `--json` |
+| `clashctl restore [备份文件名]` | 列出或恢复历史备份，支持 `--json` |
+| `clashctl update` | 检查并更新 clashctl，支持 `--json` |
+| `clashctl self` | `clashctl update` 的兼容别名 |
 | `clashctl version` | 显示版本信息 |
 
 ## 前提条件
@@ -125,6 +144,16 @@ clashctl nodes
 - Mihomo 会在首次使用时自动下载，也可手动安装
 - `init` 默认优先将订阅转成更适合服务器使用的静态配置，尽量避免服务器再次直连拉取 provider
 - `mixed-port` 模式会在 `init` 成功后自动写入当前 shell 的代理环境配置；新开终端自动生效，当前终端需手动 `source` 一次
+
+## 配置与备份路径
+
+| 文件 | 路径 |
+|------|------|
+| Mihomo 配置 | `/etc/mihomo/config.yaml`（默认，可在向导中修改） |
+| Provider 缓存 | `/etc/mihomo/providers/airport.yaml`（默认） |
+| clashctl 自身配置 | `~/.config/clashctl/config.yaml` |
+| 备份目录 | `~/.config/clashctl/backup/` |
+| systemd 服务 | `/etc/systemd/system/clashctl-mihomo.service` |
 
 ## 文档
 

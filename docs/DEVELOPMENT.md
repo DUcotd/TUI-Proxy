@@ -13,6 +13,9 @@ clashctl/
 │   ├── status.go
 │   ├── doctor.go
 │   ├── nodes.go
+│   ├── backup.go           # 备份/恢复命令
+│   ├── update.go           # 自更新逻辑（含 self 兼容别名）
+│   ├── output*.go          # 统一文本/JSON 输出辅助
 │   └── config.go
 ├── internal/
 │   ├── app/                # 应用初始化
@@ -33,6 +36,7 @@ clashctl/
 │   │   ├── process.go      # 进程管理
 │   │   ├── service.go      # systemd 服务
 │   │   └── doctor.go       # 环境诊断
+│   ├── releases/           # GitHub Release 获取与下载回退
 │   ├── system/             # 系统工具
 │   │   ├── fs.go           # 文件系统操作
 │   │   ├── exec.go         # 命令执行

@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 
 	"clashctl/internal/core"
+	"clashctl/internal/mihomo"
 )
 
 func TestModeLabel(t *testing.T) {
@@ -55,5 +58,65 @@ func TestProxyStatusLinesWithEnv(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("proxyStatusLines() = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildStatusReportIncludesSortedGroupsAndWarnings(t *testing.T) {
+	cfg := &core.AppConfig{
+		Mode:           "mixed",
+		MixedPort:      7890,
+		ConfigDir:      "/etc/mihomo",
+		ControllerAddr: "127.0.0.1:9090",
+	}
+	groups := map[string]mihomo.ProxyGroup{
+		"PROXY": {Name: "PROXY", Type: "Selector", Now: "Node A", All: []string{"Node A", "Node B"}},
+		"Auto":  {Name: "Auto", Type: "url-test", All: []string{"Node C"}},
+	}
+	inventory := &mihomo.ProxyInventory{
+		Loaded:         1,
+		Current:        "COMPATIBLE",
+		Candidates:     []string{"COMPATIBLE"},
+		OnlyCompatible: true,
+	}
+
+	report := buildStatusReport(cfg, []string{"HTTP_PROXY=http://127.0.0.1:7890"}, false, nil, "/usr/local/bin/mihomo", "1.19.10", nil, "1.19.10", nil, groups, nil, inventory, nil)
+
+	if !report.Service.Active || report.Service.Mode != "process" {
+		t.Fatalf("service = %#v", report.Service)
+	}
+	if !report.Controller.Reachable || report.Controller.Version != "1.19.10" {
+		t.Fatalf("controller = %#v", report.Controller)
+	}
+	if len(report.Groups) != 2 || report.Groups[0].Name != "Auto" || report.Groups[1].Name != "PROXY" {
+		t.Fatalf("groups = %#v", report.Groups)
+	}
+	if report.Inventory == nil || !report.Inventory.OnlyCompatible {
+		t.Fatalf("inventory = %#v", report.Inventory)
+	}
+	if len(report.Warnings) == 0 {
+		t.Fatal("expected compatibility warning")
+	}
+}
+
+func TestPrintStatusReportIncludesFallbackHint(t *testing.T) {
+	report := &statusReport{
+		Service:    statusServiceReport{Active: true, Mode: "systemd"},
+		Binary:     statusBinaryReport{Found: true, Path: "/usr/local/bin/mihomo", Version: "1.19.10"},
+		Config:     statusConfigReport{Dir: "/etc/mihomo", Mode: "mixed", MixedPort: 7890},
+		ProxyEnv:   statusProxyEnvReport{Messages: []string{"Shell 代理: ✅ 已设置"}},
+		Controller: statusControllerReport{Reachable: true, Version: "1.19.10"},
+		Inventory:  &statusInventoryReport{OnlyCompatible: true},
+	}
+
+	var buf bytes.Buffer
+	if err := printStatusReport(&buf, report); err != nil {
+		t.Fatalf("printStatusReport() error = %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"服务状态: ✅ 运行中 (systemd)", "Controller API: ✅ 可达 (Mihomo 1.19.10)", "当前仅剩 COMPATIBLE", "advanced import --file sub.txt"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q in:\n%s", want, out)
+		}
 	}
 }

@@ -99,7 +99,7 @@ ARCH="$(uname -m)"
 case "$ARCH" in
     x86_64|amd64)   GOARCH="amd64" ;;
     aarch64|arm64)  GOARCH="arm64" ;;
-    armv7l|armv6l)  GOARCH="armv7" ;;
+    armv7l|armv6l)  GOARCH="arm" ;;
     *)              die "不支持的架构: $ARCH" ;;
 esac
 
@@ -216,11 +216,13 @@ install_clashctl() {
     echo ""
     printf "  ${BOLD}[1/2] 安装 clashctl${RESET}\n"
 
+    local local_asset="./clashctl-linux-${GOARCH}"
+
     # Check local binary first
-    if [ -f "./clashctl-linux-amd64" ]; then
+    if [ -f "$local_asset" ]; then
         info "检测到本地文件，直接安装"
         mkdir -p "$INSTALL_DIR"
-        cp ./clashctl-linux-amd64 "$INSTALL_DIR/clashctl"
+        cp "$local_asset" "$INSTALL_DIR/clashctl"
         chmod +x "$INSTALL_DIR/clashctl"
         rollback_add_file "$INSTALL_DIR/clashctl"
         ok "clashctl → $INSTALL_DIR/clashctl"

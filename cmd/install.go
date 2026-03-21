@@ -10,6 +10,16 @@ import (
 	"clashctl/internal/system"
 )
 
+var installJSON bool
+
+type installRunReport struct {
+	Installed     bool               `json:"installed"`
+	AlreadyExists bool               `json:"already_exists"`
+	RequiresRoot  bool               `json:"requires_root,omitempty"`
+	Binary        *installJSONReport `json:"binary,omitempty"`
+	Error         string             `json:"error,omitempty"`
+}
+
 var installCmd = &cobra.Command{
 	Use:    "install",
 	Short:  "安装 Mihomo 内核",
@@ -19,28 +29,61 @@ var installCmd = &cobra.Command{
 }
 
 func init() {
+	bindInstallFlags(installCmd)
+	bindInstallFlags(advancedInstallCmd)
 	rootCmd.AddCommand(installCmd)
 }
 
+func bindInstallFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&installJSON, "json", false, "以 JSON 输出安装结果")
+}
+
 func runInstall(cmd *cobra.Command, args []string) error {
+	report := &installRunReport{}
 	// Check root
 	if err := system.RequireRoot(); err != nil {
-		return err
+		report.RequiresRoot = true
+		return finishInstallReport(report, err)
 	}
 
 	// Check if already installed
 	if binary, err := mihomo.FindBinary(); err == nil {
 		version, _ := mihomo.GetBinaryVersion()
-		printInstallStatus(os.Stdout, binary, version)
-		return nil
+		report.AlreadyExists = true
+		report.Binary = &installJSONReport{Path: binary, Version: version, Installed: false}
+		if !installJSON {
+			printInstallStatus(os.Stdout, binary, version)
+		}
+		return finishInstallReport(report, nil)
 	}
 
 	// Download and install
 	result, err := mihomo.InstallMihomo()
 	if err != nil {
-		return fmt.Errorf("安装失败: %w", err)
+		return finishInstallReport(report, fmt.Errorf("安装失败: %w", err))
 	}
-	printInstallResult(os.Stdout, result)
+	report.Installed = true
+	report.Binary = &installJSONReport{
+		Path:       result.Path,
+		Version:    result.Version,
+		ReleaseTag: result.ReleaseTag,
+		Installed:  result.Installed,
+	}
+	if !installJSON {
+		printInstallResult(os.Stdout, result)
+	}
 
-	return nil
+	return finishInstallReport(report, nil)
+}
+
+func finishInstallReport(report *installRunReport, err error) error {
+	if err != nil && report != nil {
+		report.Error = err.Error()
+	}
+	if installJSON && report != nil {
+		if writeErr := writeJSON(report); writeErr != nil {
+			return writeErr
+		}
+	}
+	return err
 }
