@@ -237,3 +237,61 @@ func TestRunRestoreCreatesMissingTargetDir(t *testing.T) {
 		t.Fatalf("restored content = %q, want %q", string(got), string(want))
 	}
 }
+
+func TestRunRestoreRejectsPathTraversalBackupName(t *testing.T) {
+	home := setupCmdTestHome(t)
+	_ = writeTestAppConfig(t, home)
+
+	backupDir := backupDirForHome(home)
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	outsidePath := filepath.Join(home, "outside.yaml")
+	if err := os.WriteFile(outsidePath, []byte("mixed-port: 10000\n"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	err := runRestore(nil, []string{"../outside.yaml"})
+	if err == nil {
+		t.Fatal("runRestore() should reject path traversal backup names")
+	}
+	if !strings.Contains(err.Error(), "备份文件名不合法") {
+		t.Fatalf("runRestore() error = %v, want illegal backup name", err)
+	}
+}
+
+func TestRunRestoreRejectsInvalidMihomoBackup(t *testing.T) {
+	home := setupCmdTestHome(t)
+	cfg := writeTestAppConfig(t, home)
+	targetPath := mihomoConfigPath(cfg)
+	original := []byte("mixed-port: 7890\n")
+	if err := os.WriteFile(targetPath, original, 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	backupDir := backupDirForHome(home)
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	backupName := "config-invalid.yaml"
+	if err := os.WriteFile(filepath.Join(backupDir, backupName), []byte("mixed-port: [broken"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	err := runRestore(nil, []string{backupName})
+	if err == nil {
+		t.Fatal("runRestore() should reject invalid backup content")
+	}
+	if !strings.Contains(err.Error(), "备份文件校验失败") {
+		t.Fatalf("runRestore() error = %v", err)
+	}
+
+	got, readErr := os.ReadFile(targetPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile() error = %v", readErr)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("target content = %q, want %q", string(got), string(original))
+	}
+}

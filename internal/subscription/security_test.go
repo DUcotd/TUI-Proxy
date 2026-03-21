@@ -210,6 +210,29 @@ unknown-top-level: true
 	}
 }
 
+func TestPatchRemoteYAMLInjectsTUNConfigForTUNMode(t *testing.T) {
+	cfg := core.DefaultAppConfig()
+	cfg.Mode = "tun"
+	result, err := PatchRemoteYAML([]byte(`
+mixed-port: 7890
+proxies:
+  - name: test
+    type: socks5
+    server: example.com
+    port: 1080
+`), cfg)
+	if err != nil {
+		t.Fatalf("PatchRemoteYAML() error = %v", err)
+	}
+	text := string(result.YAML)
+	if strings.Contains(text, "mixed-port:") {
+		t.Fatalf("patched YAML should drop mixed-port in tun mode: %s", text)
+	}
+	if !strings.Contains(text, "tun:") {
+		t.Fatalf("patched YAML should contain tun config: %s", text)
+	}
+}
+
 func TestContainsDangerousScript(t *testing.T) {
 	tests := []struct {
 		script string

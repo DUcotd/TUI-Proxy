@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -92,15 +93,13 @@ func (r *Resolver) ResolveRemoteURL(cfg *core.AppConfig, rawURL string, timeout 
 	if err != nil {
 		contentKind := system.ProbeContentKind(prepared.Body)
 		if contentKind == "unknown" && looksLikeProviderConfig(prepared.Body) {
-			return &ResolvedConfigPlan{
-				Kind:            PlanKindProvider,
-				ContentKind:     contentKind,
-				Summary:         fmt.Sprintf("检测到 provider 配置，保留远程拉取模式: %s", rawURL),
-				FetchDetail:     prepared.FetchDetail,
-				UsedProxyEnv:    system.HasProxyEnvForDisplay(),
-				VerifyInventory: true,
-				MihomoConfig:    core.BuildMihomoConfig(cfg),
-			}, nil
+			providerPlan, providerErr := resolveProviderConfigPlan(cfg, prepared.Body, rawURL)
+			if providerErr != nil {
+				return nil, providerErr
+			}
+			providerPlan.FetchDetail = prepared.FetchDetail
+			providerPlan.UsedProxyEnv = system.HasProxyEnvForDisplay()
+			return providerPlan, nil
 		}
 		if contentKind == "html" || contentKind == "empty" {
 			return nil, fmt.Errorf("订阅返回了不可用内容 (%s): %s", contentKind, previewSubscriptionBody(prepared.Body))
@@ -175,4 +174,69 @@ func looksLikeProviderConfig(body []byte) bool {
 	_, hasProxies := doc["proxies"]
 	_, hasGroups := doc["proxy-groups"]
 	return hasProviders && !hasProxies && !hasGroups
+}
+
+func resolveProviderConfigPlan(cfg *core.AppConfig, body []byte, rawURL string) (*ResolvedConfigPlan, error) {
+	patched, err := PatchRemoteYAML(body, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	var doc map[string]any
+	if err := yaml.Unmarshal(patched.YAML, &doc); err != nil {
+		return nil, fmt.Errorf("解析 provider 配置失败: %w", err)
+	}
+
+	base := core.BuildMihomoConfig(cfg)
+	doc["mode"] = base.Mode
+	doc["dns"] = base.DNS
+	if _, ok := doc["rules"]; !ok || len(asYAMLList(doc["rules"])) == 0 {
+		doc["rules"] = append([]string{}, base.Rules...)
+	}
+
+	providers, ok := doc["proxy-providers"].(map[string]any)
+	if !ok || len(providers) == 0 {
+		return nil, fmt.Errorf("provider 配置缺少可用的 proxy-providers")
+	}
+
+	if _, ok := doc["proxy-groups"]; !ok || len(asYAMLList(doc["proxy-groups"])) == 0 {
+		doc["proxy-groups"] = []any{map[string]any{
+			"name": "PROXY",
+			"type": "select",
+			"use":  sortedProviderNames(providers),
+		}}
+		patched.Warnings = append(patched.Warnings, "provider 配置未声明 proxy-groups，已补全默认 PROXY 组")
+	}
+
+	rendered, err := yaml.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("写回 provider 配置失败: %w", err)
+	}
+
+	patched.Warnings = dedupeStrings(patched.Warnings)
+	return &ResolvedConfigPlan{
+		Kind:            PlanKindProvider,
+		ContentKind:     "provider-yaml",
+		DetectedFormat:  "provider-yaml",
+		Summary:         fmt.Sprintf("检测到 provider 配置，已保留远程 provider 并补全本地运行默认项: %s", rawURL),
+		VerifyInventory: true,
+		Warnings:        patched.Warnings,
+		RemovedFields:   patched.RemovedFields,
+		Sanitized:       patched.Sanitized,
+		RawYAML:         rendered,
+	}, nil
+}
+
+func asYAMLList(value any) []any {
+	list, _ := value.([]any)
+	return list
+}
+
+func sortedProviderNames(providers map[string]any) []string {
+	names := make([]string, 0, len(providers))
+	for name := range providers {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
 }

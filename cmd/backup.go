@@ -13,6 +13,8 @@ import (
 	"clashctl/internal/app"
 	"clashctl/internal/config"
 	"clashctl/internal/core"
+
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -282,7 +284,10 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	backupName := args[0]
-	backupPath := filepath.Join(backupDir, backupName)
+	backupPath, err := resolveBackupPath(backupDir, backupName)
+	if err != nil {
+		return err
+	}
 
 	// Check if backup exists
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
@@ -322,6 +327,9 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	if strings.HasPrefix(backupName, "clashctl-") {
 		report.TargetKind = "clashctl"
 	}
+	if err := validateRestoreData(data, report.TargetKind, backupPath); err != nil {
+		return err
+	}
 	if _, err := os.Stat(targetPath); err == nil {
 		previousBackup, err := config.BackupFile(targetPath)
 		if err != nil {
@@ -345,6 +353,48 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✅ 配置已从 %s 恢复到 %s\n", backupName, targetPath)
 
+	return nil
+}
+
+func resolveBackupPath(backupDir, backupName string) (string, error) {
+	name := strings.TrimSpace(backupName)
+	if name == "" {
+		return "", fmt.Errorf("备份文件名不能为空")
+	}
+	if filepath.Base(name) != name {
+		return "", fmt.Errorf("备份文件名不合法: %s", backupName)
+	}
+
+	baseDir, err := filepath.Abs(backupDir)
+	if err != nil {
+		return "", fmt.Errorf("无法解析备份目录: %w", err)
+	}
+	path := filepath.Join(baseDir, name)
+	resolvedPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("无法解析备份路径: %w", err)
+	}
+	if resolvedPath != path {
+		return "", fmt.Errorf("备份文件名不合法: %s", backupName)
+	}
+	return resolvedPath, nil
+}
+
+func validateRestoreData(data []byte, targetKind, sourcePath string) error {
+	if err := config.ValidateYAMLBytes(data, sourcePath); err != nil {
+		return fmt.Errorf("备份文件校验失败: %w", err)
+	}
+	switch targetKind {
+	case "clashctl":
+		var cfg core.AppConfig
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return fmt.Errorf("备份文件校验失败: 无法解析 clashctl 配置: %w", err)
+		}
+	default:
+		if err := config.ValidateProxyCount(data); err != nil {
+			return fmt.Errorf("备份文件校验失败: %w", err)
+		}
+	}
 	return nil
 }
 

@@ -75,6 +75,8 @@ func sanitizeRemoteYAMLDocument(doc map[string]any, cfg *core.AppConfig) (map[st
 		}
 
 		switch lowerKey {
+		case "mixed-port":
+			continue
 		case "proxies":
 			if proxies := sanitizeProxyList(value); len(proxies) > 0 {
 				patched[key] = proxies
@@ -111,9 +113,28 @@ func sanitizeRemoteYAMLDocument(doc map[string]any, cfg *core.AppConfig) (map[st
 	patched["log-level"] = "info"
 	if cfg.Mode == "mixed" {
 		patched["mixed-port"] = cfg.MixedPort
+	} else {
+		if _, hadMixedPort := doc["mixed-port"]; hadMixedPort {
+			removed = append(removed, "mixed-port")
+		}
+		patched["tun"] = buildPatchedTUNConfig()
 	}
 
 	return patched, dedupeStrings(removed)
+}
+
+func buildPatchedTUNConfig() *core.TUNConfig {
+	return &core.TUNConfig{
+		Enable:              true,
+		Stack:               "mixed",
+		AutoRoute:           true,
+		AutoRedirect:        true,
+		AutoDetectInterface: true,
+		DNSHijack: []string{
+			"any:53",
+			"tcp://any:53",
+		},
+	}
 }
 
 func sanitizeProxyList(value any) []any {

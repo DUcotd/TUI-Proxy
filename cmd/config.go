@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
+	configfile "clashctl/internal/config"
 	"clashctl/internal/core"
 )
 
@@ -66,7 +66,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 
 	configPath := mihomoConfigPath(cfg)
 	report := &configShowReport{ConfigPath: configPath}
-	data, err := os.ReadFile(configPath)
+	data, err := configfile.ReadConfigWithLimit(configPath)
 	if err != nil {
 		return finishConfigShowReport(report, fmt.Errorf("无法读取配置文件 %s: %w", configPath, err))
 	}

@@ -115,3 +115,23 @@ func TestDownloadFileWithOptionsAtomicWritesVerifiedFile(t *testing.T) {
 		t.Fatalf("dest content = %q, want %q", string(got), string(body))
 	}
 }
+
+func TestDownloadBytesWithDoerLimitRejectsOversizedBody(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/file", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+
+	_, err = DownloadBytesWithDoerLimit(fakeHTTPDoer(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("12345")),
+		}, nil
+	}), req, 4)
+	if err == nil {
+		t.Fatal("DownloadBytesWithDoerLimit() should reject oversized bodies")
+	}
+	if !strings.Contains(err.Error(), "响应体过大") {
+		t.Fatalf("DownloadBytesWithDoerLimit() error = %v", err)
+	}
+}

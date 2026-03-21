@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -344,13 +345,16 @@ func TestTestNodeEscapesPath(t *testing.T) {
 
 func TestTestProxyGroupNodes(t *testing.T) {
 	var requestedTargets []string
+	var requestedTargetsMu sync.Mutex
 	client := NewClient("http://example.invalid")
 	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		target := r.URL.EscapedPath()
 		if r.URL.RawQuery != "" {
 			target += "?" + r.URL.RawQuery
 		}
+		requestedTargetsMu.Lock()
 		requestedTargets = append(requestedTargets, target)
+		requestedTargetsMu.Unlock()
 		switch r.URL.EscapedPath() {
 		case "/proxies/PROXY":
 			return &http.Response{
@@ -404,6 +408,27 @@ func TestTestProxyGroupNodes(t *testing.T) {
 	}
 	if len(requestedTargets) != 4 {
 		t.Fatalf("requestedTargets = %#v, want 4 requests", requestedTargets)
+	}
+}
+
+func TestGetGitHubMirrorURLSupportsReleaseAndAPIEndpoints(t *testing.T) {
+	apiURL := "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
+	releaseURL := "https://github.com/MetaCubeX/mihomo/releases/latest/download/mihomo-linux-amd64.gz"
+
+	gotAPI := GetGitHubMirrorURL(apiURL)
+	if gotAPI == apiURL {
+		t.Fatalf("GetGitHubMirrorURL() should rewrite GitHub API URLs")
+	}
+	if !strings.Contains(gotAPI, "api.github.com/repos/MetaCubeX/mihomo/releases/latest") {
+		t.Fatalf("mirrored API URL = %q", gotAPI)
+	}
+
+	gotRelease := GetGitHubMirrorURL(releaseURL)
+	if gotRelease == releaseURL {
+		t.Fatalf("GetGitHubMirrorURL() should rewrite release asset URLs")
+	}
+	if !strings.Contains(gotRelease, "github.com/MetaCubeX/mihomo/releases/latest/download/mihomo-linux-amd64.gz") {
+		t.Fatalf("mirrored release URL = %q", gotRelease)
 	}
 }
 

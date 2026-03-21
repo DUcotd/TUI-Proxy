@@ -118,21 +118,6 @@ func ValidateProxyCount(data []byte) error {
 		}
 	}
 
-	// Check proxy-providers
-	if providers, ok := doc["proxy-providers"].(map[string]any); ok {
-		totalProxies := 0
-		for _, provider := range providers {
-			if p, ok := provider.(map[string]any); ok {
-				if urls, ok := p["url"].([]any); ok {
-					totalProxies += len(urls)
-				}
-			}
-		}
-		if totalProxies > MaxProxyCount {
-			return fmt.Errorf("Provider 代理节点数量过多: %d (最大允许 %d)", totalProxies, MaxProxyCount)
-		}
-	}
-
 	return nil
 }
 

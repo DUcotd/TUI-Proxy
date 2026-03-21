@@ -53,17 +53,14 @@ func GetGitHubMirrorURL(originalURL string) string {
 	// Check if user has set a custom mirror
 	if customMirror := os.Getenv("CLASHCTL_GITHUB_MIRROR"); customMirror != "" {
 		mirror := strings.TrimRight(customMirror, "/")
-		if strings.HasPrefix(originalURL, "https://github.com/") {
-			return mirror + "/" + strings.TrimPrefix(originalURL, "https://")
-		}
-		if strings.HasPrefix(originalURL, "https://api.github.com/") {
+		if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
 			return mirror + "/" + strings.TrimPrefix(originalURL, "https://")
 		}
 	}
 
 	// Try default mirrors if the original URL is not reachable
 	for _, mirror := range githubMirrors {
-		if strings.HasPrefix(originalURL, "https://github.com/") {
+		if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
 			return mirror + strings.TrimPrefix(originalURL, "https://")
 		}
 	}

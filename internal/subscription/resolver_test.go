@@ -52,6 +52,25 @@ func TestResolveContentYAMLPlan(t *testing.T) {
 	}
 }
 
+func TestResolveContentYAMLPlanHonorsTUNMode(t *testing.T) {
+	resolver := NewResolver()
+	cfg := core.DefaultAppConfig()
+	cfg.Mode = "tun"
+	input := []byte("mixed-port: 7890\nproxies:\n  - name: a\n")
+
+	plan, err := resolver.ResolveContent(cfg, input)
+	if err != nil {
+		t.Fatalf("ResolveContent() error = %v", err)
+	}
+	text := string(plan.RawYAML)
+	if strings.Contains(text, "mixed-port:") {
+		t.Fatalf("patched yaml should not keep mixed-port in tun mode: %s", text)
+	}
+	if !strings.Contains(text, "tun:") {
+		t.Fatalf("patched yaml should contain tun config: %s", text)
+	}
+}
+
 func TestResolveRemoteURLUsesProviderModeForProviderConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	preparedDir := filepath.Join(tempDir, "prepared-provider")
@@ -67,6 +86,11 @@ proxy-providers:
   airport:
     type: http
     url: https://example.com/provider.yaml
+    filter: hk
+    health-check:
+      enable: true
+      url: https://cp.cloudflare.com/
+      interval: 300
 `),
 				FetchDetail: "bytes=21",
 				TempDir:     preparedDir,
@@ -83,8 +107,21 @@ proxy-providers:
 	if plan.Kind != PlanKindProvider {
 		t.Fatalf("Kind = %q", plan.Kind)
 	}
-	if plan.MihomoConfig == nil || plan.MihomoConfig.ProxyProviders == nil {
-		t.Fatalf("unexpected provider plan: %#v", plan)
+	if len(plan.RawYAML) == 0 {
+		t.Fatalf("provider plan should render raw yaml: %#v", plan)
+	}
+	text := string(plan.RawYAML)
+	if !strings.Contains(text, "url: https://example.com/provider.yaml") {
+		t.Fatalf("provider yaml should preserve upstream url: %s", text)
+	}
+	if !strings.Contains(text, "filter: hk") {
+		t.Fatalf("provider yaml should preserve filter: %s", text)
+	}
+	if !strings.Contains(text, "proxy-groups:") || !strings.Contains(text, "- airport") {
+		t.Fatalf("provider yaml should include default PROXY group: %s", text)
+	}
+	if !strings.Contains(text, "rules:") {
+		t.Fatalf("provider yaml should include default rules: %s", text)
 	}
 	if _, err := os.Stat(preparedDir); !os.IsNotExist(err) {
 		t.Fatalf("prepared temp dir should be removed, stat error = %v", err)

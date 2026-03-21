@@ -70,8 +70,22 @@ func DownloadBytes(url string, timeout time.Duration) ([]byte, error) {
 	return DownloadBytesWithDoer(NewHTTPClient(timeout, false), req)
 }
 
+// DownloadBytesLimit fetches a URL and enforces a maximum response size.
+func DownloadBytesLimit(url string, timeout time.Duration, maxBytes int64) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return DownloadBytesWithDoerLimit(NewHTTPClient(timeout, false), req, maxBytes)
+}
+
 // DownloadBytesWithDoer fetches a URL using the provided HTTP client.
 func DownloadBytesWithDoer(doer HTTPDoer, req *http.Request) ([]byte, error) {
+	return DownloadBytesWithDoerLimit(doer, req, 0)
+}
+
+// DownloadBytesWithDoerLimit fetches a URL using the provided HTTP client and size limit.
+func DownloadBytesWithDoerLimit(doer HTTPDoer, req *http.Request, maxBytes int64) ([]byte, error) {
 	resp, err := doer.Do(req)
 	if err != nil {
 		return nil, err
@@ -81,7 +95,18 @@ func DownloadBytesWithDoer(doer HTTPDoer, req *http.Request) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+	if maxBytes <= 0 {
+		return io.ReadAll(resp.Body)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("响应体过大 (超过 %d bytes)", maxBytes)
+	}
+	return data, nil
 }
 
 // DownloadFileWithOptions downloads a file using the provided HTTP client and options.

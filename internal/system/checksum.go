@@ -13,6 +13,8 @@ type NamedDownload struct {
 	URL  string
 }
 
+const MaxChecksumFileBytes = 1 * 1024 * 1024
+
 var sha256Pattern = regexp.MustCompile(`(?i)^[a-f0-9]{64}$`)
 
 // FindChecksumAsset looks for a checksum artifact that can verify targetName.
@@ -69,7 +71,7 @@ func ExtractSHA256(data []byte, targetName string) (string, error) {
 
 // DownloadVerifiedFile downloads a file and verifies it against a release checksum artifact.
 func DownloadVerifiedFile(asset NamedDownload, checksumAsset NamedDownload, destPath string) error {
-	checksumData, err := DownloadBytes(checksumAsset.URL, 2*time.Minute)
+	checksumData, err := DownloadBytesLimit(checksumAsset.URL, 2*time.Minute, MaxChecksumFileBytes)
 	if err != nil {
 		return fmt.Errorf("下载校验文件失败: %w", err)
 	}

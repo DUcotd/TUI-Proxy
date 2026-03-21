@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"clashctl/internal/core"
@@ -143,5 +144,31 @@ func TestSaveRawYAMLRejectsInvalidInputWithoutOverwriting(t *testing.T) {
 	}
 	if string(got) != string(original) {
 		t.Fatalf("config content = %q, want %q", string(got), string(original))
+	}
+}
+
+func TestValidateProxyCountRejectsOversizedInlineProxyList(t *testing.T) {
+	var builder strings.Builder
+	builder.WriteString("proxies:\n")
+	for i := 0; i < MaxProxyCount+1; i++ {
+		builder.WriteString("  - name: node\n")
+	}
+
+	err := ValidateProxyCount([]byte(builder.String()))
+	if err == nil {
+		t.Fatal("ValidateProxyCount() should reject oversized inline proxy lists")
+	}
+}
+
+func TestValidateProxyCountIgnoresProxyProviderURLs(t *testing.T) {
+	data := []byte(`
+proxy-providers:
+  airport:
+    type: http
+    url: https://example.com/provider.yaml
+`)
+
+	if err := ValidateProxyCount(data); err != nil {
+		t.Fatalf("ValidateProxyCount() error = %v, want nil for provider-only config", err)
 	}
 }
