@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,11 +17,22 @@ import (
 //go:embed scripts/prepare-subscription.sh
 var prepareSubscriptionScript string
 
+const MaxPreparedSubscriptionBytes = 20 * 1024 * 1024
+
 type PreparedSubscription struct {
 	Body        []byte
 	ContentPath string
 	InfoPath    string
 	FetchDetail string
+	TempDir     string
+}
+
+// Cleanup removes any temporary files created for the prepared subscription.
+func (p *PreparedSubscription) Cleanup() error {
+	if p == nil || strings.TrimSpace(p.TempDir) == "" {
+		return nil
+	}
+	return os.RemoveAll(p.TempDir)
 }
 
 // ValidateSubscriptionURL validates that a URL is safe for subscription fetching.
@@ -60,6 +72,12 @@ func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubs
 	if err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			_ = os.RemoveAll(workDir)
+		}
+	}()
 
 	scriptPath := filepath.Join(workDir, "prepare-subscription.sh")
 	if err := os.WriteFile(scriptPath, []byte(prepareSubscriptionScript), 0700); err != nil {
@@ -67,7 +85,15 @@ func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubs
 	}
 
 	outDir := filepath.Join(workDir, "output")
-	cmd := exec.Command("/bin/sh", scriptPath, rawURL, outDir, fmt.Sprintf("%d", int(timeout.Seconds())), "clashctl/"+core.AppVersion)
+	cmd := exec.Command(
+		"/bin/sh",
+		scriptPath,
+		rawURL,
+		outDir,
+		fmt.Sprintf("%d", int(timeout.Seconds())),
+		"clashctl/"+core.AppVersion,
+		strconv.FormatInt(MaxPreparedSubscriptionBytes, 10),
+	)
 	cmd.Env = StripProxyEnv(os.Environ())
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -82,17 +108,31 @@ func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubs
 	if contentPath == "" {
 		contentPath = filepath.Join(outDir, "subscription.txt")
 	}
-	body, err := os.ReadFile(contentPath)
+	body, err := readPreparedSubscriptionBody(contentPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取订阅内容失败: %w", err)
 	}
 	infoPath := filepath.Join(outDir, "subscription.info")
 	infoData, _ := os.ReadFile(infoPath)
 
-	return &PreparedSubscription{
+	prepared := &PreparedSubscription{
 		Body:        body,
 		ContentPath: contentPath,
 		InfoPath:    infoPath,
 		FetchDetail: strings.TrimSpace(string(infoData)),
-	}, nil
+		TempDir:     workDir,
+	}
+	cleanupOnError = false
+	return prepared, nil
+}
+
+func readPreparedSubscriptionBody(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > MaxPreparedSubscriptionBytes {
+		return nil, fmt.Errorf("订阅内容过大: %d bytes (最大允许 %d bytes)", info.Size(), MaxPreparedSubscriptionBytes)
+	}
+	return os.ReadFile(path)
 }

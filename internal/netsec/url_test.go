@@ -1,6 +1,11 @@
 package netsec
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"net"
+	"testing"
+)
 
 func TestValidateRemoteHTTPURLRejectsLocalTargets(t *testing.T) {
 	tests := []string{
@@ -44,5 +49,19 @@ func TestValidateRemoteHTTPURLAllowsLocalTargetsWithEnvOverride(t *testing.T) {
 func TestValidateRemoteHTTPURLRejectsUnsupportedScheme(t *testing.T) {
 	if _, err := ValidateRemoteHTTPURL("ftp://example.com/sub", URLValidationOptions{}); err == nil {
 		t.Fatal("ValidateRemoteHTTPURL() should reject unsupported schemes")
+	}
+}
+
+func TestValidateRemoteHTTPURLRejectsResolutionFailuresWhenRequested(t *testing.T) {
+	prev := lookupIPAddr
+	lookupIPAddr = func(context.Context, string) ([]net.IPAddr, error) {
+		return nil, fmt.Errorf("dns timeout")
+	}
+	defer func() {
+		lookupIPAddr = prev
+	}()
+
+	if _, err := ValidateRemoteHTTPURL("https://example.com/sub", URLValidationOptions{ResolveHost: true}); err == nil {
+		t.Fatal("ValidateRemoteHTTPURL() should reject resolution failures")
 	}
 }

@@ -48,6 +48,47 @@ func TestValidateDownloadedClashctlBinary(t *testing.T) {
 	}
 }
 
+func TestReplaceCurrentExecutableDoesNotTouchLegacyBakPath(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "clashctl")
+	src := filepath.Join(dir, "clashctl-new")
+	legacyBackup := dest + ".bak"
+
+	writeExecutableFile(t, dest, "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  echo 'clashctl v1.0.0'\n  exit 0\nfi\necho old\n")
+	writeExecutableFile(t, src, "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  echo 'clashctl v2.0.0'\n  exit 0\nfi\necho new\n")
+	if err := os.WriteFile(legacyBackup, []byte("keep backup"), 0644); err != nil {
+		t.Fatalf("WriteFile(legacy backup) error = %v", err)
+	}
+
+	if err := replaceCurrentExecutable(src, dest); err != nil {
+		t.Fatalf("replaceCurrentExecutable() error = %v", err)
+	}
+
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile(dest) error = %v", err)
+	}
+	if string(data) != "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  echo 'clashctl v2.0.0'\n  exit 0\nfi\necho new\n" {
+		t.Fatalf("dest content = %q", string(data))
+	}
+
+	backupData, err := os.ReadFile(legacyBackup)
+	if err != nil {
+		t.Fatalf("ReadFile(legacy backup) error = %v", err)
+	}
+	if string(backupData) != "keep backup" {
+		t.Fatalf("legacy backup content = %q", string(backupData))
+	}
+
+	matches, err := filepath.Glob(filepath.Join(dir, "clashctl.bak-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary backup files should be removed, got %v", matches)
+	}
+}
+
 func writeExecutableFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0755); err != nil {

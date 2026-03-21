@@ -161,40 +161,30 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Println("\n正在下载更新...")
 	}
 
-	// Download new binary to temp file
-	tmpPath := selfPath + ".tmp"
+	// Download new binary to a unique temp file next to the current executable
+	tmpPath, err := system.CreateSiblingTempFile(selfPath, ".tmp-*")
+	if err != nil {
+		return finishUpdateReport(report, fmt.Errorf("创建更新临时文件失败: %w", err))
+	}
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
 	asset := system.NamedDownload{Name: binaryName, URL: downloadURL}
 	if err := releases.DownloadVerifiedGitHubAsset(asset, checksumAsset, mihomo.GetGitHubMirrorURL, tmpPath); err != nil {
-		os.Remove(tmpPath)
 		return finishUpdateReport(report, fmt.Errorf("下载失败: %w", err))
 	}
 
 	// Make executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {
-		os.Remove(tmpPath)
 		return finishUpdateReport(report, fmt.Errorf("设置权限失败: %w", err))
 	}
 	if err := validateDownloadedClashctlBinary(tmpPath); err != nil {
-		os.Remove(tmpPath)
 		return finishUpdateReport(report, fmt.Errorf("下载的 clashctl 二进制不可用: %w", err))
 	}
 
-	// Replace current binary
-	// Backup old one first
-	backupPath := selfPath + ".bak"
-	if err := os.Rename(selfPath, backupPath); err != nil {
-		os.Remove(tmpPath)
-		return finishUpdateReport(report, fmt.Errorf("备份旧版本失败: %w", err))
+	if err := replaceCurrentExecutable(tmpPath, selfPath); err != nil {
+		return finishUpdateReport(report, err)
 	}
-
-	if err := os.Rename(tmpPath, selfPath); err != nil {
-		// Try to restore backup
-		os.Rename(backupPath, selfPath)
-		return finishUpdateReport(report, fmt.Errorf("替换文件失败: %w", err))
-	}
-
-	// Clean up backup
-	os.Remove(backupPath)
 	report.Updated = true
 	report.Action = "update"
 
@@ -221,6 +211,12 @@ func finishUpdateReport(report *updateRunReport, err error) error {
 		}
 	}
 	return err
+}
+
+func replaceCurrentExecutable(srcPath, destPath string) error {
+	return system.ReplaceFile(srcPath, destPath, system.ReplaceFileOptions{
+		Validate: validateDownloadedClashctlBinary,
+	})
 }
 
 func validateDownloadedClashctlBinary(path string) error {

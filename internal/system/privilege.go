@@ -4,6 +4,7 @@ package system
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // IsRoot checks if the current process is running as root.
@@ -34,16 +35,38 @@ func SuggestSudo(command string) string {
 
 // CanWritePath checks if the current user can write to a path.
 func CanWritePath(path string) error {
-	// Try to open the file for writing (or create it)
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0644)
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("%s 是目录，无法按文件写入", path)
+		}
+		f, openErr := os.OpenFile(path, os.O_WRONLY, 0)
+		if openErr != nil {
+			if os.IsPermission(openErr) {
+				return fmt.Errorf("没有写入 %s 的权限", path)
+			}
+			return openErr
+		}
+		return f.Close()
+	} else if !os.IsNotExist(err) {
+		if os.IsPermission(err) {
+			return fmt.Errorf("没有访问 %s 的权限", path)
+		}
+		return err
+	}
+
+	dir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(dir, filepath.Base(path)+".perm-*")
 	if err != nil {
 		if os.IsPermission(err) {
 			return fmt.Errorf("没有写入 %s 的权限", path)
 		}
 		return err
 	}
-	f.Close()
-	// Clean up if we created a new file
-	os.Remove(path)
+	tmpPath := tmpFile.Name()
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	_ = os.Remove(tmpPath)
 	return nil
 }

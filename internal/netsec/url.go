@@ -12,6 +12,8 @@ import (
 
 const localSubscriptionOverrideEnv = "CLASHCTL_ALLOW_LOCAL_SUBSCRIPTION"
 
+var lookupIPAddr = net.DefaultResolver.LookupIPAddr
+
 type URLValidationOptions struct {
 	ResolveHost bool
 	AllowLocal  bool
@@ -77,9 +79,9 @@ func ValidateRemoteHTTPURL(rawURL string, opts URLValidationOptions) (*url.URL, 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	addrs, err := lookupIPAddr(ctx, host)
 	if err != nil {
-		return u, nil
+		return nil, fmt.Errorf("无法安全解析主机 %s: %w", host, err)
 	}
 	for _, addr := range addrs {
 		if isPrivateIP(addr.IP) {

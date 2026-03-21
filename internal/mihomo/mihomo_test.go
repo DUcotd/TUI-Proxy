@@ -153,6 +153,105 @@ func TestActivateBinaryRollsBackOnInvalidInstall(t *testing.T) {
 	}
 }
 
+func TestActivateBinaryDoesNotTouchLegacyBakPath(t *testing.T) {
+	tmp := t.TempDir()
+	dest := filepath.Join(tmp, "mihomo")
+	good := filepath.Join(tmp, "mihomo.good")
+	legacyBackup := dest + ".bak"
+
+	writeExecutable(t, dest, "#!/bin/sh\necho 'Mihomo Meta v1.0.0'\n")
+	writeExecutable(t, good, "#!/bin/sh\necho 'Mihomo Meta v2.0.0'\n")
+	if err := os.WriteFile(legacyBackup, []byte("keep backup"), 0644); err != nil {
+		t.Fatalf("WriteFile(legacy backup) error = %v", err)
+	}
+
+	if err := activateBinary(good, dest); err != nil {
+		t.Fatalf("activateBinary() error = %v", err)
+	}
+
+	version, err := validateBinary(dest)
+	if err != nil {
+		t.Fatalf("validateBinary(dest) error = %v", err)
+	}
+	if version != "Mihomo Meta v2.0.0" {
+		t.Fatalf("installed binary version = %q", version)
+	}
+
+	backupData, err := os.ReadFile(legacyBackup)
+	if err != nil {
+		t.Fatalf("ReadFile(legacy backup) error = %v", err)
+	}
+	if string(backupData) != "keep backup" {
+		t.Fatalf("legacy backup content = %q", string(backupData))
+	}
+
+	matches, err := filepath.Glob(filepath.Join(tmp, "mihomo.bak-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary backup files should be removed, got %v", matches)
+	}
+}
+
+func TestDownloadGeoFileRemovesTempFileOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "geoip.dat")
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("too small")),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	err := downloadGeoFile(client, "https://example.com/geoip.dat", dest)
+	if err == nil {
+		t.Fatal("downloadGeoFile() should reject undersized content")
+	}
+
+	matches, globErr := filepath.Glob(filepath.Join(dir, "geoip.dat.tmp-*"))
+	if globErr != nil {
+		t.Fatalf("Glob() error = %v", globErr)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary geodata files should be removed, got %v", matches)
+	}
+}
+
+func TestDownloadGeoFileRemovesTempFileOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "geoip.dat")
+	body := bytes.Repeat([]byte("x"), 2048)
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	if err := downloadGeoFile(client, "https://example.com/geoip.dat", dest); err != nil {
+		t.Fatalf("downloadGeoFile() error = %v", err)
+	}
+
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !bytes.Equal(data, body) {
+		t.Fatalf("downloaded body mismatch: got %d bytes want %d", len(data), len(body))
+	}
+
+	matches, globErr := filepath.Glob(filepath.Join(dir, "geoip.dat.tmp-*"))
+	if globErr != nil {
+		t.Fatalf("Glob() error = %v", globErr)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary geodata files should be removed after rename, got %v", matches)
+	}
+}
+
 func TestNewClient(t *testing.T) {
 	client := NewClient("http://127.0.0.1:9090")
 	if client.BaseURL != "http://127.0.0.1:9090" {

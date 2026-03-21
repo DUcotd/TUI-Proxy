@@ -1,6 +1,7 @@
 package system
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -35,6 +36,118 @@ func TestDirExists(t *testing.T) {
 	// File is not dir
 	if DirExists("/etc/hostname") {
 		t.Error("DirExists(file) = true, want false")
+	}
+}
+
+func TestDirWritableLeavesNoProbeFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := DirWritable(dir); err != nil {
+		t.Fatalf("DirWritable() error = %v", err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(dir, ".clashctl_write_test-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 0 {
+		fatalf := "DirWritable() should clean probe files, got %v"
+		t.Fatalf(fatalf, matches)
+	}
+}
+
+func TestSiblingTempPathHelpers(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "binary")
+
+	tmpPath, err := CreateSiblingTempFile(target, ".tmp-*")
+	if err != nil {
+		t.Fatalf("CreateSiblingTempFile() error = %v", err)
+	}
+	if filepath.Dir(tmpPath) != dir {
+		t.Fatalf("CreateSiblingTempFile() dir = %q, want %q", filepath.Dir(tmpPath), dir)
+	}
+	if _, err := os.Stat(tmpPath); err != nil {
+		t.Fatalf("temp file should exist, stat err = %v", err)
+	}
+
+	reservedPath, err := ReserveSiblingPath(target, ".bak-*")
+	if err != nil {
+		t.Fatalf("ReserveSiblingPath() error = %v", err)
+	}
+	if filepath.Dir(reservedPath) != dir {
+		t.Fatalf("ReserveSiblingPath() dir = %q, want %q", filepath.Dir(reservedPath), dir)
+	}
+	if _, err := os.Stat(reservedPath); !os.IsNotExist(err) {
+		t.Fatalf("reserved path should not exist, stat err = %v", err)
+	}
+
+	_ = os.Remove(tmpPath)
+}
+
+func TestWriteFileAtomicCreatesFinalFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
+	want := []byte("mixed-port: 7890\n")
+
+	if err := WriteFileAtomic(path, want, 0600); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("file content = %q, want %q", string(got), string(want))
+	}
+
+	matches, err := filepath.Glob(path + ".tmp-*")
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary files should be cleaned up, found %v", matches)
+	}
+}
+
+func TestReplaceFileRestoresOriginalOnValidationFailure(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "binary")
+	src := filepath.Join(dir, "binary.new")
+
+	if err := os.WriteFile(dest, []byte("original"), 0755); err != nil {
+		t.Fatalf("WriteFile(dest) error = %v", err)
+	}
+	if err := os.WriteFile(src, []byte("candidate"), 0755); err != nil {
+		t.Fatalf("WriteFile(src) error = %v", err)
+	}
+
+	err := ReplaceFile(src, dest, ReplaceFileOptions{
+		Validate: func(path string) error {
+			return fmt.Errorf("boom")
+		},
+	})
+	if err == nil {
+		t.Fatal("ReplaceFile() should fail validation")
+	}
+
+	got, readErr := os.ReadFile(dest)
+	if readErr != nil {
+		t.Fatalf("ReadFile(dest) error = %v", readErr)
+	}
+	if string(got) != "original" {
+		t.Fatalf("dest content = %q, want original", string(got))
+	}
+
+	if _, statErr := os.Stat(src); !os.IsNotExist(statErr) {
+		t.Fatalf("src should be moved away after attempted replace, stat err = %v", statErr)
+	}
+
+	matches, globErr := filepath.Glob(filepath.Join(dir, "binary.bak-*"))
+	if globErr != nil {
+		t.Fatalf("Glob() error = %v", globErr)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("backup files should be cleaned up, found %v", matches)
 	}
 }
 
@@ -111,6 +224,11 @@ func TestPersistShellProxyEnv(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("SHELL", "/bin/bash")
 
+	profilePath := filepath.Join(home, ".bashrc")
+	if err := os.WriteFile(profilePath, []byte("# existing\n"), 0600); err != nil {
+		t.Fatalf("WriteFile(profile) error: %v", err)
+	}
+
 	result, err := PersistShellProxyEnv(7890)
 	if err != nil {
 		t.Fatalf("PersistShellProxyEnv() error: %v", err)
@@ -133,6 +251,13 @@ func TestPersistShellProxyEnv(t *testing.T) {
 	}
 	if !strings.Contains(string(profile), clashctlProxyBlockStart) {
 		t.Fatalf("profile missing managed block: %s", string(profile))
+	}
+	info, err := os.Stat(result.ProfilePath)
+	if err != nil {
+		t.Fatalf("Stat(profile) error: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("profile mode = %o, want 0600", info.Mode().Perm())
 	}
 
 	if _, err := PersistShellProxyEnv(7891); err != nil {
@@ -169,5 +294,47 @@ func TestRemoveShellProxyEnv(t *testing.T) {
 	}
 	if _, err := os.Stat(result.ScriptPath); !os.IsNotExist(err) {
 		t.Fatalf("script should be removed, stat err = %v", err)
+	}
+}
+
+func TestCanWritePathDoesNotDeleteExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	const want = "keep me"
+	if err := os.WriteFile(path, []byte(want), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if err := CanWritePath(path); err != nil {
+		t.Fatalf("CanWritePath() error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != want {
+		t.Fatalf("existing file content changed: got %q want %q", string(data), want)
+	}
+}
+
+func TestCanWritePathDoesNotCreateTargetFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "future-config.yaml")
+
+	if err := CanWritePath(path); err != nil {
+		t.Fatalf("CanWritePath() error = %v", err)
+	}
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("target file should not be created, stat err = %v", err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(dir, "future-config.yaml.perm-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("permission probe files should be removed, got %v", matches)
 	}
 }

@@ -147,7 +147,7 @@ proxies:
 
 func TestPatchRemoteYAMLRemovesUnsafeTopLevelFields(t *testing.T) {
 	cfg := core.DefaultAppConfig()
-	patched, err := PatchRemoteYAML([]byte(`
+	result, err := PatchRemoteYAML([]byte(`
 mixed-port: 7890
 bind-address: 0.0.0.0
 hosts:
@@ -165,17 +165,23 @@ proxies:
 	if err != nil {
 		t.Fatalf("PatchRemoteYAML() error = %v", err)
 	}
-	text := string(patched)
+	text := string(result.YAML)
 	for _, fragment := range []string{"bind-address:", "hosts:", "authentication:", "skip-auth-prefixes:"} {
 		if strings.Contains(text, fragment) {
 			t.Fatalf("patched YAML still contains %q: %s", fragment, text)
 		}
 	}
+	if !result.Sanitized {
+		t.Fatal("PatchRemoteYAML() should mark result as sanitized")
+	}
+	if len(result.RemovedFields) == 0 {
+		t.Fatal("PatchRemoteYAML() should report removed fields")
+	}
 }
 
 func TestPatchRemoteYAMLSanitizesProxyProviders(t *testing.T) {
 	cfg := core.DefaultAppConfig()
-	patched, err := PatchRemoteYAML([]byte(`
+	result, err := PatchRemoteYAML([]byte(`
 proxy-providers:
   airport 1:
     type: http
@@ -192,12 +198,15 @@ unknown-top-level: true
 	if err != nil {
 		t.Fatalf("PatchRemoteYAML() error = %v", err)
 	}
-	text := string(patched)
+	text := string(result.YAML)
 	if strings.Contains(text, "unknown-top-level") || strings.Contains(text, "script:") {
 		t.Fatalf("patched YAML still contains stripped fields: %s", text)
 	}
 	if !strings.Contains(text, filepath.ToSlash("providers/airport-1.yaml")) {
 		t.Fatalf("patched YAML should contain sanitized provider path, got: %s", text)
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatal("PatchRemoteYAML() should surface warnings")
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -106,10 +105,13 @@ func InstallMihomo() (*InstallResult, error) {
 		return nil, err
 	}
 
-	tmpPath := installedBinaryPath + ".download"
-	if err := os.RemoveAll(tmpPath); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("清理旧临时文件失败: %w", err)
+	tmpPath, err := system.CreateSiblingTempFile(installedBinaryPath, ".download-*")
+	if err != nil {
+		return nil, fmt.Errorf("创建临时下载文件失败: %w", err)
 	}
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
 
 	if isGz {
 		if err := downloadAndDecompressGz(system.NamedDownload{Name: assetName, URL: downloadURL}, checksumAsset, tmpPath); err != nil {
@@ -120,8 +122,6 @@ func InstallMihomo() (*InstallResult, error) {
 			return nil, fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	}
-	defer os.Remove(tmpPath)
-
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		return nil, fmt.Errorf("设置执行权限失败: %w", err)
 	}
@@ -144,42 +144,15 @@ func InstallMihomo() (*InstallResult, error) {
 }
 
 func activateBinary(srcPath, destPath string) error {
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return fmt.Errorf("创建安装目录失败: %w", err)
-	}
-
-	backupPath := destPath + ".bak"
-	if err := os.RemoveAll(backupPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("清理旧备份失败: %w", err)
-	}
-
-	hadExisting := false
-	if _, err := os.Stat(destPath); err == nil {
-		hadExisting = true
-		if err := os.Rename(destPath, backupPath); err != nil {
-			return fmt.Errorf("备份现有 Mihomo 失败: %w", err)
-		}
-	}
-
-	if err := os.Rename(srcPath, destPath); err != nil {
-		if hadExisting {
-			_ = os.Rename(backupPath, destPath)
-		}
-		return fmt.Errorf("写入 Mihomo 二进制失败: %w", err)
-	}
-
-	if _, err := validateBinary(destPath); err != nil {
-		_ = os.Remove(destPath)
-		if hadExisting {
-			_ = os.Rename(backupPath, destPath)
-		}
-		return fmt.Errorf("安装后的 Mihomo 二进制校验失败: %w", err)
-	}
-
-	if hadExisting {
-		_ = os.Remove(backupPath)
-	}
-	return nil
+	return system.ReplaceFile(srcPath, destPath, system.ReplaceFileOptions{
+		Validate: func(path string) error {
+			_, err := validateBinary(path)
+			if err != nil {
+				return fmt.Errorf("安装后的 Mihomo 二进制校验失败: %w", err)
+			}
+			return nil
+		},
+	})
 }
 
 // fetchLatestMihomoRelease gets the latest release info from GitHub API.

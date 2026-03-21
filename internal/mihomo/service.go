@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -50,7 +49,7 @@ func GenerateServiceFile(cfg ServiceConfig) error {
 	}
 
 	path := fmt.Sprintf("/etc/systemd/system/%s.service", cfg.ServiceName)
-	return writeFileAtomic(path, data, 0644)
+	return system.WriteFileAtomic(path, data, 0644)
 }
 
 func renderServiceFile(cfg ServiceConfig) ([]byte, error) {
@@ -67,45 +66,6 @@ func renderServiceFile(cfg ServiceConfig) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
-}
-
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("创建服务目录失败: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("创建服务文件 %s 失败: %w", path, err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmpFile.Write(data); err != nil {
-		_ = tmpFile.Close()
-		return fmt.Errorf("写入服务文件失败: %w", err)
-	}
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
-		return fmt.Errorf("同步服务文件失败: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("关闭服务文件失败: %w", err)
-	}
-	if err := os.Chmod(tmpPath, mode); err != nil {
-		return fmt.Errorf("设置服务文件权限失败: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("落盘服务文件失败: %w", err)
-	}
-
-	dirHandle, err := os.Open(filepath.Dir(path))
-	if err == nil {
-		_ = dirHandle.Sync()
-		_ = dirHandle.Close()
-	}
-
-	return nil
 }
 
 func systemdQuote(value string) string {

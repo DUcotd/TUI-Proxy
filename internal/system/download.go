@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -100,16 +99,12 @@ func DownloadFileWithOptions(doer HTTPDoer, req *http.Request, destPath string, 
 	path := destPath
 	cleanupPath := ""
 	if opts.Atomic {
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return err
-		}
-		tmpFile, err := os.CreateTemp(filepath.Dir(destPath), filepath.Base(destPath)+".tmp-*")
+		tmpPath, err := CreateSiblingTempFile(destPath, ".tmp-*")
 		if err != nil {
 			return err
 		}
-		path = tmpFile.Name()
+		path = tmpPath
 		cleanupPath = path
-		_ = tmpFile.Close()
 		defer os.Remove(cleanupPath)
 	}
 
@@ -143,7 +138,7 @@ func DownloadFileWithOptions(doer HTTPDoer, req *http.Request, destPath string, 
 	}
 
 	if opts.Atomic {
-		if err := os.Rename(path, destPath); err != nil {
+		if err := ReplaceFile(path, destPath, ReplaceFileOptions{}); err != nil {
 			return err
 		}
 	}

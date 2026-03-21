@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -223,6 +224,13 @@ func populateImportReport(report *importRunReport, cfg *core.AppConfig, plan *su
 	report.ProxyCount = plan.ProxyCount
 	report.VerifyInventory = plan.VerifyInventory
 	report.UsedProxyEnv = plan.UsedProxyEnv
+	report.Warnings = append(report.Warnings, plan.Warnings...)
+	if plan.Sanitized {
+		report.Warnings = append(report.Warnings, "订阅 YAML 已按安全策略裁剪")
+	}
+	if len(plan.RemovedFields) > 0 {
+		report.Warnings = append(report.Warnings, "已移除字段: "+strings.Join(plan.RemovedFields, ", "))
+	}
 }
 
 func finishImportReport(report *importRunReport, err error) error {

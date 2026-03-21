@@ -37,7 +37,7 @@ func PersistShellProxyEnv(port int) (*ShellProxyResult, error) {
 	}
 
 	script := buildProxyScript(port)
-	if err := os.WriteFile(scriptPath, []byte(script), 0644); err != nil {
+	if err := writeFilePreserveMode(scriptPath, []byte(script), 0644); err != nil {
 		return nil, fmt.Errorf("写入代理环境脚本失败: %w", err)
 	}
 
@@ -122,7 +122,7 @@ func upsertManagedBlock(path, block string) error {
 		return fmt.Errorf("读取 shell 配置失败: %w", err)
 	}
 	updated := replaceManagedBlock(string(content), block)
-	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+	if err := writeFilePreserveMode(path, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("写入 shell 配置失败: %w", err)
 	}
 	return nil
@@ -137,7 +137,7 @@ func removeManagedBlock(path string) error {
 		return fmt.Errorf("读取 shell 配置失败: %w", err)
 	}
 	updated := replaceManagedBlock(string(content), "")
-	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+	if err := writeFilePreserveMode(path, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("写入 shell 配置失败: %w", err)
 	}
 	return nil
@@ -161,4 +161,17 @@ func replaceManagedBlock(content, block string) string {
 		return block + "\n"
 	}
 	return content + "\n\n" + block + "\n"
+}
+
+func writeFilePreserveMode(path string, data []byte, defaultMode os.FileMode) error {
+	mode := defaultMode
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := EnsureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+	return WriteFileAtomic(path, data, mode)
 }

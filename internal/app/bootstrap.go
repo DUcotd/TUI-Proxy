@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"clashctl/internal/system"
+
 	"gopkg.in/yaml.v3"
 
 	"clashctl/internal/core"
@@ -88,7 +90,7 @@ func SaveAppConfig(cfg *core.AppConfig) error {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := system.WriteFileAtomic(path, data, 0600); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
 

@@ -165,14 +165,21 @@ func downloadGeoFile(client system.HTTPDoer, url, destPath string) error {
 		reader = io.MultiReader(bytes.NewReader(buf[:n]), resp.Body)
 	}
 
-	tmpPath := destPath + ".tmp"
-	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return err
+	}
+
+	tmpPath, err := system.CreateSiblingTempFile(destPath, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	out, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		out.Close()
-		os.Remove(tmpPath)
+		_ = out.Close()
+		_ = os.Remove(tmpPath)
 	}()
 
 	limited := io.LimitReader(reader, GeoDataMaxSize+1)
@@ -200,7 +207,7 @@ func downloadGeoFile(client system.HTTPDoer, url, destPath string) error {
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, destPath)
+	return system.ReplaceFile(tmpPath, destPath, system.ReplaceFileOptions{})
 }
 
 // GeoDataReady checks if all required geodata files exist in configDir.

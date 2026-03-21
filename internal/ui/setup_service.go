@@ -304,10 +304,20 @@ func (r *setupRunContext) stepResolveRemotePlan(resolver *subscription.Resolver)
 			Detail:  fmt.Sprintf("检测到 %s，解析出 %d 个节点", plan.DetectedFormat, plan.ProxyCount),
 		})
 	case subscription.PlanKindYAML:
+		detail := plan.Summary
+		if plan.Sanitized {
+			detail += "\n该订阅已按安全策略裁剪"
+		}
+		if len(plan.RemovedFields) > 0 {
+			detail += "\n移除字段: " + strings.Join(plan.RemovedFields, ", ")
+		}
+		if len(plan.Warnings) > 0 {
+			detail += "\n" + strings.Join(plan.Warnings, "\n")
+		}
 		r.addStep(ExecStep{
 			Label:   "处理订阅 YAML",
 			Success: true,
-			Detail:  plan.Summary,
+			Detail:  detail,
 		})
 	case subscription.PlanKindProvider:
 		r.addStep(ExecStep{
@@ -364,6 +374,9 @@ func (s *defaultSetupService) stepWritePlan(run *setupRunContext, plan *subscrip
 	}
 	if backupPath != "" {
 		detail += "\n旧配置已备份至: " + backupPath
+	}
+	if len(plan.Warnings) > 0 {
+		detail += "\n" + strings.Join(plan.Warnings, "\n")
 	}
 	run.addStep(ExecStep{Label: "写入配置文件", Success: true, Detail: detail})
 	return true

@@ -8,6 +8,8 @@ import (
 	"clashctl/internal/config"
 	"clashctl/internal/core"
 	"clashctl/internal/system"
+
+	"gopkg.in/yaml.v3"
 )
 
 // PlanKind identifies the resolved config style.
@@ -29,6 +31,9 @@ type ResolvedConfigPlan struct {
 	UsedProxyEnv    bool
 	ProxyCount      int
 	VerifyInventory bool
+	Warnings        []string
+	RemovedFields   []string
+	Sanitized       bool
 	MihomoConfig    *core.MihomoConfig
 	RawYAML         []byte
 }
@@ -79,16 +84,18 @@ func (r *Resolver) ResolveRemoteURL(cfg *core.AppConfig, rawURL string, timeout 
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		_ = prepared.Cleanup()
+	}()
 
 	plan, err := r.ResolveContent(cfg, prepared.Body)
 	if err != nil {
-		// Unknown content from a remote URL falls back to provider mode.
 		contentKind := system.ProbeContentKind(prepared.Body)
-		if contentKind == "unknown" {
+		if contentKind == "unknown" && looksLikeProviderConfig(prepared.Body) {
 			return &ResolvedConfigPlan{
 				Kind:            PlanKindProvider,
 				ContentKind:     contentKind,
-				Summary:         fmt.Sprintf("未识别订阅内容，回退为 provider 模式: %s", rawURL),
+				Summary:         fmt.Sprintf("检测到 provider 配置，保留远程拉取模式: %s", rawURL),
 				FetchDetail:     prepared.FetchDetail,
 				UsedProxyEnv:    system.HasProxyEnvForDisplay(),
 				VerifyInventory: true,
@@ -97,6 +104,9 @@ func (r *Resolver) ResolveRemoteURL(cfg *core.AppConfig, rawURL string, timeout 
 		}
 		if contentKind == "html" || contentKind == "empty" {
 			return nil, fmt.Errorf("订阅返回了不可用内容 (%s): %s", contentKind, previewSubscriptionBody(prepared.Body))
+		}
+		if contentKind == "unknown" {
+			return nil, fmt.Errorf("订阅返回了无法识别的内容: %s", previewSubscriptionBody(prepared.Body))
 		}
 		return nil, err
 	}
@@ -135,7 +145,10 @@ func (r *Resolver) ResolveContent(cfg *core.AppConfig, content []byte) (*Resolve
 			DetectedFormat:  contentKind,
 			Summary:         "检测到 Mihomo/Clash YAML，已转为本地静态配置",
 			VerifyInventory: true,
-			RawYAML:         patched,
+			Warnings:        patched.Warnings,
+			RemovedFields:   patched.RemovedFields,
+			Sanitized:       patched.Sanitized,
+			RawYAML:         patched.YAML,
 		}, nil
 	default:
 		return nil, fmt.Errorf("未识别的订阅内容格式: %s", contentKind)
@@ -151,4 +164,15 @@ func previewSubscriptionBody(body []byte) string {
 		preview = preview[:80] + "..."
 	}
 	return preview
+}
+
+func looksLikeProviderConfig(body []byte) bool {
+	var doc map[string]any
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		return false
+	}
+	_, hasProviders := doc["proxy-providers"]
+	_, hasProxies := doc["proxies"]
+	_, hasGroups := doc["proxy-groups"]
+	return hasProviders && !hasProxies && !hasGroups
 }

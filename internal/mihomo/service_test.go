@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"clashctl/internal/system"
 )
 
 func TestRenderServiceFileQuotesPathsAndIncludesIdentity(t *testing.T) {
@@ -48,12 +50,12 @@ func TestRenderServiceFileOmitsIdentityWhenUnset(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomicCreatesFinalFile(t *testing.T) {
+func TestGenerateServiceFileAtomicWritesFinalFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "systemd", "clashctl-mihomo.service")
 	want := []byte("[Unit]\nDescription=test\n")
 
-	if err := writeFileAtomic(path, want, 0644); err != nil {
-		t.Fatalf("writeFileAtomic() error = %v", err)
+	if err := system.WriteFileAtomic(path, want, 0644); err != nil {
+		t.Fatalf("WriteFileAtomic() error = %v", err)
 	}
 
 	got, err := os.ReadFile(path)

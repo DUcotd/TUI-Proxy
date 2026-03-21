@@ -1,6 +1,8 @@
 package subscription
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -50,12 +52,24 @@ func TestResolveContentYAMLPlan(t *testing.T) {
 	}
 }
 
-func TestResolveRemoteURLFallsBackToProvider(t *testing.T) {
+func TestResolveRemoteURLUsesProviderModeForProviderConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	preparedDir := filepath.Join(tempDir, "prepared-provider")
+	if err := os.Mkdir(preparedDir, 0755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+
 	resolver := &Resolver{
 		prepareURL: func(string, time.Duration) (*system.PreparedSubscription, error) {
 			return &system.PreparedSubscription{
-				Body:        []byte("provider payload v2025"),
+				Body: []byte(`
+proxy-providers:
+  airport:
+    type: http
+    url: https://example.com/provider.yaml
+`),
 				FetchDetail: "bytes=21",
+				TempDir:     preparedDir,
 			}, nil
 		},
 	}
@@ -72,14 +86,46 @@ func TestResolveRemoteURLFallsBackToProvider(t *testing.T) {
 	if plan.MihomoConfig == nil || plan.MihomoConfig.ProxyProviders == nil {
 		t.Fatalf("unexpected provider plan: %#v", plan)
 	}
+	if _, err := os.Stat(preparedDir); !os.IsNotExist(err) {
+		t.Fatalf("prepared temp dir should be removed, stat error = %v", err)
+	}
+}
+
+func TestResolveRemoteURLRejectsUnknownContent(t *testing.T) {
+	resolver := &Resolver{
+		prepareURL: func(string, time.Duration) (*system.PreparedSubscription, error) {
+			return &system.PreparedSubscription{
+				Body:        []byte("provider payload v2025"),
+				FetchDetail: "bytes=21",
+				TempDir:     t.TempDir(),
+			}, nil
+		},
+	}
+	cfg := core.DefaultAppConfig()
+	cfg.SubscriptionURL = "https://example.com/sub"
+
+	_, err := resolver.ResolveRemoteURL(cfg, cfg.SubscriptionURL, time.Second)
+	if err == nil {
+		t.Fatal("ResolveRemoteURL() should reject unknown content")
+	}
+	if !strings.Contains(err.Error(), "无法识别") {
+		t.Fatalf("ResolveRemoteURL() error = %v, want unknown content hint", err)
+	}
 }
 
 func TestResolveRemoteURLRejectsHTMLContent(t *testing.T) {
+	tempDir := t.TempDir()
+	preparedDir := filepath.Join(tempDir, "prepared-html")
+	if err := os.Mkdir(preparedDir, 0755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+
 	resolver := &Resolver{
 		prepareURL: func(string, time.Duration) (*system.PreparedSubscription, error) {
 			return &system.PreparedSubscription{
 				Body:        []byte("<html>login</html>"),
 				FetchDetail: "bytes=18",
+				TempDir:     preparedDir,
 			}, nil
 		},
 	}
@@ -92,5 +138,8 @@ func TestResolveRemoteURLRejectsHTMLContent(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "html") {
 		t.Fatalf("ResolveRemoteURL() error = %v, want html hint", err)
+	}
+	if _, statErr := os.Stat(preparedDir); !os.IsNotExist(statErr) {
+		t.Fatalf("prepared temp dir should be removed, stat error = %v", statErr)
 	}
 }

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
+
+	"clashctl/internal/system"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,7 +34,7 @@ func BackupFile(path string) (string, error) {
 		return "", fmt.Errorf("读取 %s 备份失败: %w", path, err)
 	}
 
-	if err := os.WriteFile(backupPath, data, 0600); err != nil {
+	if err := system.WriteFileAtomic(backupPath, data, 0600); err != nil {
 		return "", fmt.Errorf("写入备份到 %s 失败: %w", backupPath, err)
 	}
 
@@ -47,43 +48,9 @@ func WriteConfig(path string, data []byte) error {
 
 // WriteConfigAtomic writes data to a temp file and renames it into place.
 func WriteConfigAtomic(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建目录 %s 失败: %w", dir, err)
-	}
-
-	tmpFile, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("创建临时配置文件失败: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("写入临时配置到 %s 失败: %w", tmpPath, err)
-	}
-	if err := tmpFile.Sync(); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("同步临时配置到磁盘失败: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("关闭临时配置文件失败: %w", err)
-	}
-	if err := os.Chmod(tmpPath, 0600); err != nil {
-		return fmt.Errorf("设置临时配置文件权限失败: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
+	if err := system.WriteFileAtomic(path, data, 0600); err != nil {
 		return fmt.Errorf("写入配置到 %s 失败: %w", path, err)
 	}
-
-	dirHandle, err := os.Open(dir)
-	if err == nil {
-		_ = dirHandle.Sync()
-		_ = dirHandle.Close()
-	}
-
 	return nil
 }
 

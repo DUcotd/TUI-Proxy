@@ -30,6 +30,11 @@ func TestValidateOutputPath_PathTraversal(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "safe relative path in cwd",
+			path:    "nested/config.yaml",
+			wantErr: false,
+		},
+		{
 			name:    "path traversal with ../",
 			path:    "../../etc/passwd",
 			wantErr: true,
@@ -82,6 +87,18 @@ func TestValidateOutputPath_PathTraversal(t *testing.T) {
 			path:    "/etc/mihomo/../../../etc/passwd",
 			wantErr: true,
 			errMsg:  "路径遍历",
+		},
+		{
+			name:    "reject root ssh path",
+			path:    "/root/.ssh/authorized_keys",
+			wantErr: true,
+			errMsg:  "允许的目录",
+		},
+		{
+			name:    "reject arbitrary home path",
+			path:    "/home/test/.bashrc",
+			wantErr: true,
+			errMsg:  "允许的目录",
 		},
 	}
 
